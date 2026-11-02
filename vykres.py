@@ -22,12 +22,15 @@ from PIL import Image, ImageDraw, ImageFont
 #: Kolikrát větší plátno se kreslí, než je výsledek.
 SUPERSAMPLE = 4
 
-#: Pohled → (odkud se kouká, co je nahoře, osy modelu ve vodorovném a svislém směru).
+#: Pohled → (odkud se kouká, co je nahoře, osy modelu ve vodorovném a svislém
+#: směru). Bez os se nedá automaticky kótovat — u kosoúhlého pohledu žádná
+#: hrana obrázku neodpovídá rozměru tělesa.
 VIEWS = {
     "zepredu": ((0, -1, 0), (0, 0, 1), ("X", "Z")),
     "zezadu": ((0, 1, 0), (0, 0, 1), ("X", "Z")),
     "zboku": ((1, 0, 0), (0, 0, 1), ("Y", "Z")),
     "shora": ((0, 0, 1), (0, 1, 0), ("X", "Y")),
+    "iso": ((1, -1, 1), (0, 0, 1), None),
 }
 
 FONTS = (
@@ -84,23 +87,27 @@ def _metrics(width: int) -> dict:
     g = {
         "u": u,
         "margin": 40 * u,
-        "gap": 11 * u,          # mezera mezi tělesem a začátkem vynášecí čáry
+        "gap": 11 * u,          # mezera mezi měřeným místem a vynášecí čárou
         "offset": 56 * u,       # odstup kótovací čáry od tělesa
         "over": 13 * u,         # přesah vynášecí čáry za kótovací
         "arrow": 15 * u,
         "arrow_half": 5 * u,
         "font_px": font_px,
         "text_gap": 8 * u,
+        "edge": max(1, int(2.4 * u)),
+        "thin": max(1, int(1.2 * u)),
     }
-    g["band"] = g["offset"] + font_px + g["text_gap"]   # místo, které si kóta ukousne
-    g["left"] = g["margin"] + g["band"]
     return g
 
 
 def fit_scale(width: int, span_mm: float) -> float:
-    """Měřítko v px/mm, při kterém kresba široká `span_mm` vyplní `width` pixelů."""
+    """Měřítko v px/mm, při kterém kresba široká `span_mm` vyplní `width` pixelů.
+
+    Počítá s tím, že kóta výšky ukousne vlevo pruh na kótovací čáru i popisek.
+    """
     g = _metrics(width)
-    return (width * SUPERSAMPLE - g["left"] - g["margin"]) / SUPERSAMPLE / span_mm
+    band = g["offset"] + g["text_gap"] + g["font_px"]
+    return (width * SUPERSAMPLE - 2 * g["margin"] - band) / SUPERSAMPLE / span_mm
 
 
 # --------------------------------------------------------------------------
@@ -108,7 +115,12 @@ def fit_scale(width: int, span_mm: float) -> float:
 # --------------------------------------------------------------------------
 
 def project(src: str, view: str):
-    """Viditelné hrany jako lomené čáry v rovině průmětu, plus obalový kvádr."""
+    """Průmět tělesa: lomené čáry, obalový kvádr a kružnice.
+
+    Kružnice se vracejí zvlášť i se středem a poloměrem — v rovině průmětu,
+    takže se na ně dá rovnou kótovat, aniž by se cokoli přepočítávalo zpátky
+    do modelu. Díra v rovné stěně se promítne zase jako kružnice.
+    """
     from build123d import Vector, import_step
 
     direction, up, _axes = _view(view)
@@ -121,17 +133,38 @@ def project(src: str, view: str):
     visible, _hidden = shape.project_to_viewport(
         viewport_origin=origin, viewport_up=up, look_at=(0, 0, 0))
 
-    polys = []
+    polys, circles = [], []
     for edge in visible:
+        kind = str(edge.geom_type).upper()
         try:
-            n = 2 if str(edge.geom_type).upper().endswith("LINE") else 48
+            n = 2 if kind.endswith("LINE") else 48
             polys.append([(p.X, p.Y) for p in (edge @ (i / (n - 1)) for i in range(n))])
+            if kind.endswith("CIRCLE"):
+                c, r = edge.arc_center, edge.radius
+                # Jen celé kružnice: oblouček na hraně zaoblení není díra.
+                if abs(edge.length - 2 * math.pi * r) < 0.01:
+                    circles.append({"c": (c.X, c.Y), "r": r})
         except Exception:
             continue
-    return polys, bbox
+    return polys, bbox, circles
 
 
-def _extent(polys):
+def circle_rows(circles, radius: float, tol: float = 0.05):
+    """Kružnice daného poloměru po vodorovných řadách, v řadě zleva doprava.
+
+    Vrací [(y, [(x, y), ...]), ...] odshora dolů. Stejné středy se slučují —
+    průmět vrátí soustřednou kružnici za každou plochu, kterou díra protne.
+    """
+    picked = [c for c in circles if abs(c["r"] - radius) <= tol]
+    rows: dict[float, dict] = {}
+    for c in picked:
+        x, y = c["c"]
+        key = next((k for k in rows if abs(k - y) <= tol), y)
+        rows.setdefault(key, {})[round(x, 3)] = (x, y)
+    return [(y, sorted(pts.values())) for y, pts in sorted(rows.items(), reverse=True)]
+
+
+def extent(polys):
     """Obdélník, do kterého se průmět vejde: (x0, x1, y0, y1)."""
     xs = [p[0] for poly in polys for p in poly]
     ys = [p[1] for poly in polys for p in poly]
@@ -139,7 +172,7 @@ def _extent(polys):
 
 
 # --------------------------------------------------------------------------
-# prvky kóty
+# kóty
 # --------------------------------------------------------------------------
 
 def _arrow(dr, tip, vec, length, half, fill):
@@ -159,45 +192,112 @@ def _rotated_text(img, center, text, font, fill):
     img.paste(tile, (int(center[0] - tile.width / 2), int(center[1] - tile.height / 2)), tile)
 
 
+def _dim(a, b, off, to_px, k, g, font, dr=None, img=None):
+    """Jedna kóta mezi body `a` a `b`, zadanými v milimetrech průmětu.
+
+    `off` je odstup kótovací čáry od měřené, taky v milimetrech; znaménko volí
+    stranu — u vodorovné kóty nahoru, u svislé doprava. Popisek sedí podle
+    normy vždy nad vodorovnou čárou a vlevo od svislé, ať je kóta kdekoli.
+
+    Vrací obdélník, který kóta na plátně zabere. Bez `dr` jen počítá: rozvržení
+    plátna musí znát obrys dřív, než je kam kreslit.
+    """
+    vodorovna = abs(a[1] - b[1]) <= 1e-6
+    if not vodorovna and abs(a[0] - b[0]) > 1e-6:
+        raise ValueError("kóta musí být vodorovná nebo svislá")
+
+    ax, ay = to_px(a)
+    bx, by = to_px(b)
+    text = _mm(math.dist(a, b))
+    tl, tt, tr, tb = font.getbbox(text)
+    tw, th = tr - tl, tb - tt
+    gap, over, text_gap = g["gap"], g["over"], g["text_gap"]
+
+    if vodorovna:
+        yd = ay - off * k                      # v pixelech roste y dolů
+        d = 1 if yd > ay else -1               # směr od měřeného místa ke kótovací čáře
+        x0, x1 = min(ax, bx), max(ax, bx)
+        cx = (ax + bx) / 2
+        if dr is not None:
+            for x in (ax, bx):
+                dr.line([(x, ay + d * gap), (x, yd + d * over)], fill=DIM_INK, width=g["thin"])
+            dr.line([(x0, yd), (x1, yd)], fill=DIM_INK, width=g["thin"])
+            _arrow(dr, (x0, yd), (1, 0), g["arrow"], g["arrow_half"], DIM_INK)
+            _arrow(dr, (x1, yd), (-1, 0), g["arrow"], g["arrow_half"], DIM_INK)
+            dr.text((cx, yd - text_gap), text, font=font, fill=DIM_INK, anchor="ms")
+        return (min(x0, cx - tw / 2), min(ay, yd + d * over, yd - text_gap - g["font_px"]),
+                max(x1, cx + tw / 2), max(ay, yd + d * over))
+
+    xd = ax + off * k
+    d = 1 if xd > ax else -1
+    y0, y1 = min(ay, by), max(ay, by)
+    cx, cy = xd - text_gap - g["font_px"] / 2, (ay + by) / 2
+    if dr is not None:
+        for y in (ay, by):
+            dr.line([(ax + d * gap, y), (xd + d * over, y)], fill=DIM_INK, width=g["thin"])
+        dr.line([(xd, y0), (xd, y1)], fill=DIM_INK, width=g["thin"])
+        _arrow(dr, (xd, y0), (0, 1), g["arrow"], g["arrow_half"], DIM_INK)
+        _arrow(dr, (xd, y1), (0, -1), g["arrow"], g["arrow_half"], DIM_INK)
+        _rotated_text(img, (cx, cy), text, font, DIM_INK)
+    # po otočení má popisek šířku `th` a výšku `tw`
+    return (min(ax, xd + d * over, cx - th / 2), min(y0, cy - tw / 2),
+            max(ax, xd + d * over), max(y1, cy + tw / 2))
+
+
 # --------------------------------------------------------------------------
 # kresba
 # --------------------------------------------------------------------------
 
 def draw(polys, bbox, out: str, view: str = "zepredu", width: int = 1600,
-         transparent: bool = False, scale: float | None = None) -> dict:
-    """Hotový průmět na papír: kóta šířky dole, výšky vlevo.
+         transparent: bool = False, scale: float | None = None,
+         dims=None) -> dict:
+    """Hotový průmět na papír.
 
     `scale` je v px na milimetr. Bez něj se kresba roztáhne na `width` pixelů —
     s ním `width` určuje už jen tloušťku čar a velikost písma a plátno se
     přizpůsobí kresbě.
+
+    `dims` je seznam kót `(a, b, odstup)` v milimetrech průmětu. Výchozí `None`
+    okótuje šířku dole a výšku vlevo, prázdný seznam nekreslí kóty žádné.
     """
     if not polys:
         raise ValueError("průmět nevrátil žádné hrany")
 
-    _d, _u, (ha, va) = _view(view)
+    axes = _view(view)[2]
     sizes = {"X": bbox.size.X, "Y": bbox.size.Y, "Z": bbox.size.Z}
-    w_mm, h_mm = sizes[ha], sizes[va]
 
-    px0, px1, py0, py1 = _extent(polys)
+    px0, px1, py0, py1 = extent(polys)
     pw, ph = (px1 - px0) or 1.0, (py1 - py0) or 1.0
 
     S = SUPERSAMPLE
     g = _metrics(width)
-    margin, gap, offset, over = g["margin"], g["gap"], g["offset"], g["over"]
-    arrow, arrow_half, text_gap = g["arrow"], g["arrow_half"], g["text_gap"]
-    font_px = g["font_px"]
-    font = _font(font_px)
-    u = g["u"]
-
+    font = _font(g["font_px"])
     if scale is None:
         scale = fit_scale(width, pw)
     k = scale * S                             # pixelů zvětšeného plátna na milimetr
     draw_w, draw_h = pw * k, ph * k
-    canvas_w = _round_up(g["left"] + draw_w + margin, S)
-    canvas_h = _round_up(margin + draw_h + g["band"] + margin, S)
 
-    ix0, iy1 = g["left"], margin + draw_h
-    to_px = lambda p: (ix0 + (p[0] - px0) * k, iy1 - (p[1] - py0) * k)
+    if dims is None:
+        if axes is None:                      # kosoúhlý pohled nemá co kótovat
+            dims = []
+        else:
+            d = g["offset"] / k
+            dims = [((px0, py0), (px1, py0), -d),     # šířka dole
+                    ((px0, py0), (px0, py1), -d)]     # výška vlevo
+
+    # Plátno se vede podle toho, co se na něm octne — kóta může být i mimo těleso.
+    local = lambda p: ((p[0] - px0) * k, (py1 - p[1]) * k)
+    boxes = [_dim(a, b, off, local, k, g, font) for a, b, off in dims]
+    fx0 = min([0.0] + [bx[0] for bx in boxes])
+    fy0 = min([0.0] + [bx[1] for bx in boxes])
+    fx1 = max([draw_w] + [bx[2] for bx in boxes])
+    fy1 = max([draw_h] + [bx[3] for bx in boxes])
+
+    margin = g["margin"]
+    canvas_w = _round_up(2 * margin + (fx1 - fx0), S)
+    canvas_h = _round_up(2 * margin + (fy1 - fy0), S)
+    ox, oy = margin - fx0, margin - fy0
+    to_px = lambda p: (ox + (p[0] - px0) * k, oy + (py1 - p[1]) * k)
 
     mode = "RGBA" if transparent else "RGB"
     bg = (255, 255, 255, 0) if transparent else "white"
@@ -207,41 +307,29 @@ def draw(polys, bbox, out: str, view: str = "zepredu", width: int = 1600,
     for poly in polys:
         pts = [to_px(p) for p in poly]
         if len(pts) > 1:
-            dr.line(pts, fill=INK, width=max(1, int(2.4 * u)), joint="curve")
+            dr.line(pts, fill=INK, width=g["edge"], joint="curve")
 
-    thin = max(1, int(1.2 * u))
-    ix1, iy0 = ix0 + draw_w, margin
-
-    # Šířka: kótovací čára pod tělesem.
-    y = iy1 + offset
-    for x in (ix0, ix1):
-        dr.line([(x, iy1 + gap), (x, y + over)], fill=DIM_INK, width=thin)
-    dr.line([(ix0, y), (ix1, y)], fill=DIM_INK, width=thin)
-    _arrow(dr, (ix0, y), (1, 0), arrow, arrow_half, DIM_INK)
-    _arrow(dr, (ix1, y), (-1, 0), arrow, arrow_half, DIM_INK)
-    dr.text(((ix0 + ix1) / 2, y - text_gap), _mm(w_mm), font=font, fill=DIM_INK, anchor="ms")
-
-    # Výška: kótovací čára vlevo od tělesa.
-    x = ix0 - offset
-    for yy in (iy0, iy1):
-        dr.line([(ix0 - gap, yy), (x - over, yy)], fill=DIM_INK, width=thin)
-    dr.line([(x, iy0), (x, iy1)], fill=DIM_INK, width=thin)
-    _arrow(dr, (x, iy0), (0, 1), arrow, arrow_half, DIM_INK)
-    _arrow(dr, (x, iy1), (0, -1), arrow, arrow_half, DIM_INK)
-    _rotated_text(img, (x - text_gap - font_px / 2, (iy0 + iy1) / 2), _mm(h_mm), font, DIM_INK)
+    for a, b, off in dims:
+        _dim(a, b, off, to_px, k, g, font, dr=dr, img=img)
 
     img = img.resize((canvas_w // S, canvas_h // S), Image.LANCZOS)
     img.save(out)
-    return {"sirka": w_mm, "vyska": h_mm, "hloubka": sizes[({"X", "Y", "Z"} - {ha, va}).pop()],
-            "hran": len(polys), "px": img.size, "meritko": scale, "out": out}
+    info = {"hran": len(polys), "px": img.size, "meritko": scale, "out": out,
+            "kot": len(dims)}
+    if axes:
+        info.update(sirka=sizes[axes[0]], vyska=sizes[axes[1]],
+                    hloubka=sizes[({"X", "Y", "Z"} - set(axes)).pop()])
+    else:
+        info.update(sirka=sizes["X"], vyska=sizes["Z"], hloubka=sizes["Y"])
+    return info
 
 
 def render(src: str, out: str, view: str = "zepredu", width: int = 1600,
-           transparent: bool = False, scale: float | None = None) -> dict:
+           transparent: bool = False, scale: float | None = None, dims=None) -> dict:
     """Jeden STEP na jednu perokresbu. Vrací rozměry v mm a použité měřítko."""
-    polys, bbox = project(src, view)
+    polys, bbox, _circles = project(src, view)
     return draw(polys, bbox, out, view=view, width=width,
-                transparent=transparent, scale=scale)
+                transparent=transparent, scale=scale, dims=dims)
 
 
 def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
@@ -258,10 +346,10 @@ def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
 
     jobs = []
     for src in sources:
-        polys, bbox = project(src, view)
+        polys, bbox, _circles = project(src, view)
         if not polys:
             raise ValueError(f"{os.path.basename(src)}: průmět nevrátil žádné hrany")
-        jobs.append((src, polys, bbox, _extent(polys)))
+        jobs.append((src, polys, bbox, extent(polys)))
 
     scale = fit_scale(width, max(e[1] - e[0] for _s, _p, _b, e in jobs))
 

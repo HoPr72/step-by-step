@@ -62,14 +62,33 @@ $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
 
 Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmět bez
 perspektivy, jen viditelné hrany, okótovaná šířka dole a výška vlevo.
-Přepínače `--pohled zepredu|zezadu|zboku|shora`, `--sirka` v pixelech
-a `--pruhledne` pro pozadí bez bílé.
+Přepínače `--pohled zepredu|zezadu|zboku|shora|iso`, `--sirka` v pixelech
+a `--pruhledne` pro pozadí bez bílé. Kosoúhlé `iso` se nekótuje — žádná hrana
+obrázku tam neodpovídá rozměru tělesa.
 
 Příkaz `sada` zpracuje celou řadu velikostí najednou a dá jim **společné
 měřítko**: nejširší kus vyjde na `--sirka`, ostatní poměrně menší, takže se
 obrázky dají postavit vedle sebe. Názvy souborů vznikají ze jmen STEPů.
 Jednotlivou kresbu lze do takové řady doplnit přes `vykres --meritko` s
 hodnotou v px/mm, kterou `sada` vypíše.
+
+### Náčrtky skříní B3
+
+```bash
+$PY nacrtky.py "…/Vykresy PDF revize 3/STEP" "…/B3/nacrtky"
+$PY montaz.py  "…/Skrin varianta 4 sloupce.stp" zada.png --meritko 0.9519
+```
+
+`nacrtky.py` vyrobí celou složku pro produktové listy naráz: nárys každé
+velikosti, jeden bokorys (hloubka i výška jsou u všech stejné), iso nejmenší
+skříně bez kót a záda s roztečemi na zeď. Všechno v jednom měřítku, takže to
+jde postavit vedle sebe. Který kus dostane iso, bokorys a záda, říkají
+přepínače `--iso`, `--bokorys` a `--zada` maskou na jméno souboru.
+
+`montaz.py` je ta část se zády zvlášť. Hledá v zadním průmětu dvě řady
+průchozích děr ⌀9, okótuje rozteče v horní liště a svislý odstup obou lišt.
+Když záda nevypadají, jak mají, radši skončí chybou, než aby okótoval něco
+jiného.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -115,6 +134,18 @@ to pomalé, kreslení skoro nic, takže se všechno promítne napřed a kreslí 
 až s měřítkem na ruce. Tloušťka čar a velikost písma se drží nominální
 šířky, ne skutečné, aby byly napříč řadou stejné.
 
+**Kružnice přežijí průmět.** Díra v rovné stěně se promítne zase jako
+kružnice, a OCCT ji takovou i vrátí — i s poloměrem a středem v rovině
+průmětu. Díry se proto nehledají v modelu a nic se nepřepočítává zpátky:
+střed vyjde přesně tam, kam se kótuje. Z kružnic se berou jen celé, protože
+oblouček na hraně zaoblení není díra, a stejné středy se slučují — průmět
+vrátí soustřednou kružnici za každou plochu, kterou díra protne.
+
+**Rozvržení plátna se vede podle toho, co na něm bude.** Kóta může ležet
+i mimo těleso, takže se nejdřív spočítá obrys všeho včetně popisků a teprve
+pak se zakládá obrázek. Proto se kóty kreslí dvakrát: napoprvé nanečisto,
+jen aby se změřily.
+
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů
 to vybere víc, než člověk čeká.
@@ -126,7 +157,10 @@ ale do objemu a hmotnosti celé sestavy se počítají dál.
 
 ```
 stepkit.py        čtení STEP, názvy, mesh, rozměry, objemy
+vykres.py         průmět, měřítko, kóty, kresba do PNG
 cli.py            příkazová řádka (rozmery / png / vykres / sada / json)
+nacrtky.py        celá složka náčrtků pro produktové listy B3
+montaz.py         záda s roztečemi na zeď
 server.py         lokální server, procházení disku, nativní dialog
 viewer/index.html prohlížeč (three.js, bez build kroku)
 cache/            keš převodů, negitovaná
