@@ -40,9 +40,11 @@ FABKA = "fabka"
 #: Jak daleko od sebe smí ležet matice, aby to byl ještě stejný plech.
 TOLERANCE = 1.0
 
-#: Díly menší než tolik milimetrů, schované uvnitř největšího tělesa, se
-#: do skříně nepřenášejí. Nula nechá brain celý.
-DROBNE = 30.0
+#: Díly menší než tolik milimetrů, schované uvnitř největšího tělesa, se do
+#: skříně nepřenášejí. Nula nechá brain celý. Výchozích 120 mm vezme celý
+#: vnitřek displeje včetně osazené desky (110 mm) a nechá displej (161 mm);
+#: mezi těmi dvěma čísly je pohodlná mezera, takže na přesné hodnotě nesejde.
+DROBNE = 120.0
 
 
 # --------------------------------------------------------------------------
@@ -137,12 +139,12 @@ def posun(odkud, kam):
 
 
 def drobne(dily, mez):
-    """Drobné díly schované uvnitř největšího tělesa.
+    """Díly menší než `mez`, schované uvnitř největšího tělesa.
 
-    Osazená deska za displejem přišla s modelem displeje a v sestavě skříně
-    nemá co dělat: nic z ní není vidět a nese většinu velikosti souboru. Co
-    z krabice čouhá ven, zůstává — tam patří i matice, podle kterých se
-    zarovnává, takže je žádná mez neodnese.
+    Vnitřek displeje přišel s jeho modelem a v sestavě skříně nemá co dělat:
+    nic z něj není vidět a nese většinu velikosti souboru. Co z krabice
+    čouhá ven, zůstává — tam patří i matice, podle kterých se zarovnává,
+    takže je žádná mez neodnese.
     """
     kvadry = {id(u): stepkit._bbox(u["shape"]) for u in dily}
 
@@ -261,7 +263,8 @@ def main() -> int:
     ap.add_argument("--brain", help="brain.step; bez něj se hledá vedle skříně")
     ap.add_argument("--zaslepka", help="zaslepka_Fab_kryt.step")
     ap.add_argument("--drobne", type=float, default=DROBNE,
-                    help="pod kolik mm vyhazovat díly schované uvnitř; 0 nechá brain celý")
+                    help=f"pod kolik mm vyhazovat díly schované uvnitř (výchozí {DROBNE:.0f});"
+                         " 0 nechá brain celý")
     opts = ap.parse_args()
 
     if os.path.isdir(opts.skrin):

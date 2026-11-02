@@ -191,13 +191,14 @@ Vyšlo při tom najevo, že brain je namodelovaný přesně v soustavě tříslo
 skříně: tam zbývá posun 0,4 mm ve svislici, a to jen proto, že brain veze
 o 0,4 mm kratší revizi plechu sloupce.
 
-**Co není vidět, nemusí tam být.** Model displeje s sebou vezl 168 drobných
-součástek osazené desky — SMD, distanční sloupky, konektory. Ve skříni z nich
-není vidět nic a nesly přes polovinu velikosti souboru (28 → 12 MB na kus).
-Vyhazují se geometricky, ne podle jmen: díl musí být menší než zadaná mez
+**Co není vidět, nemusí tam být.** Model displeje s sebou vezl celý svůj
+vnitřek — osazenou desku a na ní 156 SMD součástek, distanční sloupky,
+konektory, flex kabely. Ve skříni z toho není vidět nic a neslo to skoro
+tři čtvrtiny velikosti souboru: 28 → 8 MB na kus, u celé řady 186 → 54 MB.
+Vyhazuje se geometricky, ne podle jmen: díl musí být menší než zadaná mez
 **a zároveň** celý uvnitř největšího tělesa. Co z krabice čouhá ven, zůstává,
-takže matice pro zarovnání nemůže žádná mez odnést. Že se nic neztratilo, je
-vidět na kresbách — vyšly bit po bitu stejné jako předtím.
+takže matice pro zarovnání nemůže žádná mez odnést. A že se nic neztratilo,
+ukážou kresby — po přegenerování vyšly bit po bitu stejné.
 
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů
