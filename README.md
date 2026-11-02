@@ -100,9 +100,12 @@ s elektronikou místo schránek. Zarovnává podle dvou navařovacích matic
 nahoře, které jsou v obou modelech. Plech sloupce, který si brain nese po
 svém, ze skříně vypadne, aby tam nestály dva přes sebe; je to ten u levého
 kraje vyjímaného modulu. Záslepku do otvoru pro fabku umístí fabka, ta je
-v obou modelech taky. Výstupem je STEP se zachovanou strukturou i názvy —
-kreslí se až potom, `nacrtky.py` nad výstupním adresářem. Místo souboru
-snese i adresář a projede celou řadu velikostí.
+v obou modelech taky. Z brainu se přitom nepřenášejí drobné díly schované
+uvnitř — osazená deska za displejem přišla s modelem displeje a v sestavě
+skříně nemá co dělat; mez nastavuje `--drobne`, nula nechá brain celý.
+Výstupem je STEP se zachovanou strukturou i názvy — kreslí se až potom,
+`nacrtky.py` nad výstupním adresářem. Místo souboru snese i adresář
+a projede celou řadu velikostí.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -187,6 +190,14 @@ Posuny pak vyjdou na násobky rozteče 180 mm, a to je samo o sobě kontrola.
 Vyšlo při tom najevo, že brain je namodelovaný přesně v soustavě třísloupcové
 skříně: tam zbývá posun 0,4 mm ve svislici, a to jen proto, že brain veze
 o 0,4 mm kratší revizi plechu sloupce.
+
+**Co není vidět, nemusí tam být.** Model displeje s sebou vezl 168 drobných
+součástek osazené desky — SMD, distanční sloupky, konektory. Ve skříni z nich
+není vidět nic a nesly přes polovinu velikosti souboru (28 → 12 MB na kus).
+Vyhazují se geometricky, ne podle jmen: díl musí být menší než zadaná mez
+**a zároveň** celý uvnitř největšího tělesa. Co z krabice čouhá ven, zůstává,
+takže matice pro zarovnání nemůže žádná mez odnést. Že se nic neztratilo, je
+vidět na kresbách — vyšly bit po bitu stejné jako předtím.
 
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů

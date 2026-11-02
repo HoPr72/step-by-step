@@ -40,6 +40,10 @@ FABKA = "fabka"
 #: Jak daleko od sebe smí ležet matice, aby to byl ještě stejný plech.
 TOLERANCE = 1.0
 
+#: Díly menší než tolik milimetrů, schované uvnitř největšího tělesa, se
+#: do skříně nepřenášejí. Nula nechá brain celý.
+DROBNE = 30.0
+
 
 # --------------------------------------------------------------------------
 # čtení sestavy
@@ -132,6 +136,30 @@ def posun(odkud, kam):
     return [(kam[0][k] - odkud[0][k] + kam[1][k] - odkud[1][k]) / 2 for k in range(3)]
 
 
+def drobne(dily, mez):
+    """Drobné díly schované uvnitř největšího tělesa.
+
+    Osazená deska za displejem přišla s modelem displeje a v sestavě skříně
+    nemá co dělat: nic z ní není vidět a nese většinu velikosti souboru. Co
+    z krabice čouhá ven, zůstává — tam patří i matice, podle kterých se
+    zarovnává, takže je žádná mez neodnese.
+    """
+    kvadry = {id(u): stepkit._bbox(u["shape"]) for u in dily}
+
+    def objem(u):
+        lo, hi = kvadry[id(u)]
+        return (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2])
+
+    klo, khi = kvadry[id(max(dily, key=objem))]
+    out = []
+    for u in dily:
+        lo, hi = kvadry[id(u)]
+        uvnitr = all(lo[i] >= klo[i] - 0.01 and hi[i] <= khi[i] + 0.01 for i in range(3))
+        if uvnitr and max(hi[i] - lo[i] for i in range(3)) < mez:
+            out.append(u)
+    return out
+
+
 def _overu_misto(buzly, modul, delta, podil=0.9):
     """Brain musí po zarovnání padnout do místa po modulu, ne vedle něj.
 
@@ -166,7 +194,7 @@ def vloz(st, root, uzel, delta, jmeno=None):
     return comp
 
 
-def vymen(skrin, brain, zaslepka, out):
+def vymen(skrin, brain, zaslepka, out, mez=DROBNE):
     """Skříň s brainem místo nejpravějšího modulu. Vrací popis toho, co se stalo."""
     doc, st, roots, uzly = nacti(skrin)
     if len(roots) != 1:
@@ -193,6 +221,9 @@ def vymen(skrin, brain, zaslepka, out):
     delta = posun(dvojice_matic(buzly), dvojice_matic(uzly, plech))
     _overu_misto(buzly, modul, delta)
 
+    dily = [u for u in buzly if u["depth"] == 0]
+    pryc = {id(u) for u in drobne(dily, mez)} if mez else set()
+
     # Záslepku umístí fabka, která je v obou modelech.
     fabky = [jmenem(u, FABKA) for u in (zuzly, uzly)]
     if not all(len(f) == 1 for f in fabky):
@@ -205,8 +236,8 @@ def vymen(skrin, brain, zaslepka, out):
 
     st.RemoveComponent(modul["label"])
     st.RemoveComponent(plech["label"])
-    for u in buzly:
-        if u["depth"] == 0:
+    for u in dily:
+        if id(u) not in pryc:
             vloz(st, root, u, delta)
     vloz(st, root, kryty[0], dzaslepka)
     st.UpdateAssemblies()
@@ -219,8 +250,8 @@ def vymen(skrin, brain, zaslepka, out):
     del bdoc, zdoc, doc
 
     return {"out": out, "modul": stred(modul["shape"]), "plech": stred(plech["shape"]),
-            "posun": [round(v, 3) for v in delta], "dilu": sum(u["depth"] == 0 for u in buzly),
-            "zaslepka": dzaslepka}
+            "posun": [round(v, 3) for v in delta], "dilu": len(dily) - len(pryc),
+            "drobnych": len(pryc), "zaslepka": dzaslepka}
 
 
 def main() -> int:
@@ -229,6 +260,8 @@ def main() -> int:
     ap.add_argument("outdir")
     ap.add_argument("--brain", help="brain.step; bez něj se hledá vedle skříně")
     ap.add_argument("--zaslepka", help="zaslepka_Fab_kryt.step")
+    ap.add_argument("--drobne", type=float, default=DROBNE,
+                    help="pod kolik mm vyhazovat díly schované uvnitř; 0 nechá brain celý")
     opts = ap.parse_args()
 
     if os.path.isdir(opts.skrin):
@@ -256,11 +289,13 @@ def main() -> int:
 
     for src in files:
         jmeno = os.path.basename(src).rsplit(".", 1)[0] + " s brainem.step"
-        info = vymen(src, brain, zaslepka, os.path.join(opts.outdir, jmeno))
+        info = vymen(src, brain, zaslepka, os.path.join(opts.outdir, jmeno),
+                     mez=opts.drobne)
         print(f"{jmeno}  ({os.path.getsize(info['out']) / 1e6:.1f} MB)")
         print(f"  pryč: modul na x {info['modul'][0]:.1f}"
               f" a plech sloupce na x {info['plech'][0]:.1f}")
-        print(f"  brain: {info['dilu']} dílů, posun podle matic {info['posun']} mm")
+        print(f"  brain: {info['dilu']} dílů, posun podle matic {info['posun']} mm"
+              f"  (drobných uvnitř vynecháno {info['drobnych']})")
         print(f"  záslepka: posun podle fabky {info['zaslepka']} mm")
     return 0
 
