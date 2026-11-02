@@ -3,6 +3,7 @@
 
     python cli.py rozmery "dil.step"                 tabulka těles do terminálu
     python cli.py png     "dil.step" nahled.png      technický render, 4 pohledy
+    python cli.py vykres  "dil.step" list.png        perokresba s kótami
     python cli.py json    vystup/ "a.step" "b.step"  data pro webový prohlížeč
 """
 
@@ -95,6 +96,28 @@ def cmd_png(args: list[str]) -> int:
     return 0
 
 
+def cmd_vykres(args: list[str]) -> int:
+    import argparse
+
+    import vykres
+
+    ap = argparse.ArgumentParser(prog="cli.py vykres", description="perokresba s kótami")
+    ap.add_argument("src")
+    ap.add_argument("out")
+    ap.add_argument("--pohled", default="zepredu", choices=sorted(vykres.VIEWS))
+    ap.add_argument("--sirka", type=int, default=1600, help="šířka PNG v pixelech")
+    ap.add_argument("--pruhledne", action="store_true", help="průhledné pozadí")
+    opts = ap.parse_args(args)
+
+    info = vykres.render(opts.src, opts.out, view=opts.pohled,
+                         width=opts.sirka, transparent=opts.pruhledne)
+    print(f"{opts.out}  {info['px'][0]}×{info['px'][1]} px")
+    print(f"  kóty: šířka {info['sirka']:.2f} mm, výška {info['vyska']:.2f} mm"
+          f"  (hloubka {info['hloubka']:.2f} mm nekótovaná)")
+    print(f"  viditelných hran: {info['hran']}")
+    return 0
+
+
 def cmd_json(args: list[str]) -> int:
     if len(args) < 2:
         print("použití: json <vystupni_adresar> <soubor.step> ...", file=sys.stderr)
@@ -122,7 +145,8 @@ def cmd_json(args: list[str]) -> int:
     return 0
 
 
-COMMANDS = {"rozmery": cmd_rozmery, "png": cmd_png, "json": cmd_json}
+COMMANDS = {"rozmery": cmd_rozmery, "png": cmd_png,
+            "vykres": cmd_vykres, "json": cmd_json}
 
 
 def main() -> int:

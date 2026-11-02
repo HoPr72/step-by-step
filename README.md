@@ -55,8 +55,14 @@ PY=~/.venvs/cad/bin/python
 
 $PY cli.py rozmery "dil.step"                  # tabulka těles do terminálu
 $PY cli.py png     "dil.step" nahled.png       # technický render, 4 pohledy
+$PY cli.py vykres  "dil.step" list.png         # perokresba s kótami
 $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
 ```
+
+Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmět bez
+perspektivy, jen viditelné hrany, okótovaná šířka dole a výška vlevo.
+Přepínače `--pohled zepredu|zezadu|zboku|shora`, `--sirka` v pixelech
+a `--pruhledne` pro pozadí bez bílé.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -87,6 +93,12 @@ předepisuje norma. Volné zůstává natočení té roviny kolem úsečky, a to
 přichytává po 45° k hlavní ose nejméně rovnoběžné s měřenou úsečkou — u
 vodorovné kóty tedy sedne do roviny Front nebo Top, nebo na půlku mezi nimi.
 Tažení myší nastavuje jen odstup; podélná složka se zahazuje.
+
+**Perokresba je rovnoběžný průmět**, ne render. Hrany projdou přes HLR
+(odstranění neviditelných hran) a kreslí se jako čáry, takže okraj obrázku
+odpovídá skutečnému rozměru a jde rovnou okótovat — u perspektivy by to
+neplatilo. PIL čáry nevyhlazuje, proto se kreslí do čtyřnásobného plátna
+a na konci se zmenšuje.
 
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů
