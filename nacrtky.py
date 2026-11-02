@@ -22,11 +22,18 @@ import vykres
 
 
 def vyber(files, maska):
-    """Soubor, jehož jméno obsahuje masku. Bez trefy nebo při dvou končíme."""
+    """Soubory podle masky: `vse` všechny, `nic` žádný, jinak právě jeden.
+
+    Bez trefy nebo při dvou končíme — radši chyba než náčrtek z jiné velikosti.
+    """
+    if maska == "nic":
+        return []
+    if maska == "vse":
+        return files
     hit = [f for f in files if maska.lower() in os.path.basename(f).lower()]
     if len(hit) != 1:
         raise SystemExit(f"maska {maska!r} sedí na {len(hit)} souborů, čekám jeden")
-    return hit[0]
+    return hit
 
 
 def main() -> int:
@@ -35,7 +42,10 @@ def main() -> int:
     ap.add_argument("outdir")
     ap.add_argument("--sirka", type=int, default=1600,
                     help="šířka PNG nejširšího nárysu v pixelech")
-    ap.add_argument("--iso", default="2 sloupce", help="ze které velikosti udělat iso")
+    ap.add_argument("--meritko", type=float,
+                    help="px na milimetr; bez něj se nejširší nárys roztáhne na --sirka")
+    ap.add_argument("--iso", default="2 sloupce",
+                    help="ze které velikosti udělat iso; také `vse` nebo `nic`")
     ap.add_argument("--bokorys", default="8 sloupce")
     ap.add_argument("--zada", default="4 sloupce")
     opts = ap.parse_args()
@@ -46,7 +56,8 @@ def main() -> int:
         raise SystemExit(f"v {opts.stepdir} nejsou žádné STEP soubory")
 
     print(f"nárysy ({len(files)})")
-    infos = vykres.render_set(files, opts.outdir, view="zepredu", width=opts.sirka)
+    infos = vykres.render_set(files, opts.outdir, view="zepredu",
+                              width=opts.sirka, scale=opts.meritko)
     scale = infos[0]["meritko"]
     for i in infos:
         print(f"  {os.path.basename(i['out']):<40}{i['px'][0]:>5} ×{i['px'][1]:>5} px"
@@ -60,26 +71,35 @@ def main() -> int:
         print(f"  {nazev:<40}{info['px'][0]:>5} ×{info['px'][1]:>5} px")
         return info
 
-    print("bokorys — u všech velikostí stejný")
-    kresli(vyber(files, opts.bokorys), "skrin-bokorys.png", "zboku")
+    boky = vyber(files, opts.bokorys)
+    if boky:
+        print("bokorys — u všech velikostí stejný")
+    for src in boky:
+        nazev = ("skrin-bokorys.png" if len(boky) == 1
+                 else stepkit.slugify(src) + "-bokorys.png")
+        kresli(src, nazev, "zboku")
 
-    print("iso bez kót")
-    iso = vyber(files, opts.iso)
-    kresli(iso, stepkit.slugify(iso) + "-iso.png", "iso", dims=[])
+    isa = vyber(files, opts.iso)
+    if isa:
+        print("iso bez kót")
+    for src in isa:
+        kresli(src, stepkit.slugify(src) + "-iso.png", "iso", dims=[])
 
-    print("záda s roztečemi na zeď")
     zada = vyber(files, opts.zada)
-    polys, bbox, circles = vykres.project(zada, "zezadu")
-    out = os.path.join(opts.outdir, stepkit.slugify(zada) + "-zada.png")
-    try:
-        dims = montaz.kotovani(polys, circles)
-    except ValueError as exc:
-        print(f"  záda nekótuji: {exc}", file=sys.stderr)
-        dims = []
-    info = vykres.draw(polys, bbox, out, view="zezadu", width=opts.sirka,
-                       scale=scale, dims=dims)
-    print(f"  {os.path.basename(out):<40}{info['px'][0]:>5} ×{info['px'][1]:>5} px"
-          f"   {len(dims)} kót")
+    if zada:
+        print("záda s roztečemi na zeď")
+    for src in zada:
+        polys, bbox, circles = vykres.project(src, "zezadu")
+        out = os.path.join(opts.outdir, stepkit.slugify(src) + "-zada.png")
+        try:
+            dims = montaz.kotovani(polys, circles)
+        except ValueError as exc:
+            print(f"  záda nekótuji: {exc}", file=sys.stderr)
+            dims = []
+        info = vykres.draw(polys, bbox, out, view="zezadu", width=opts.sirka,
+                           scale=scale, dims=dims)
+        print(f"  {os.path.basename(out):<40}{info['px'][0]:>5} ×{info['px'][1]:>5} px"
+              f"   {len(dims)} kót")
 
     print(f"\nvšechno v měřítku {scale:.4f} px/mm")
     return 0

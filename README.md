@@ -75,16 +75,20 @@ hodnotou v px/mm, kterou `sada` vypíše.
 ### Náčrtky skříní B3
 
 ```bash
-$PY nacrtky.py "…/Vykresy PDF revize 3/STEP" "…/B3/nacrtky"
-$PY montaz.py  "…/Skrin varianta 4 sloupce.stp" zada.png --meritko 0.9519
-$PY brain.py   "…/Skrin varianta 3 sloupce.stp" "…/B3/s-brainem" --meritko 0.9519
+$PY nacrtky.py "…/Vykresy PDF revize 3/STEP" "…/B3/nacrtky" --meritko 1.0
+$PY montaz.py  "…/Skrin varianta 4 sloupce.stp" zada.png --meritko 1.0
+
+$PY brain.py   "…/Vykresy PDF revize 3/STEP" "…/B3/s-brainem/STEP"
+$PY nacrtky.py "…/B3/s-brainem/STEP" "…/B3/s-brainem" --meritko 1.0 --iso vse --zada nic
 ```
 
 `nacrtky.py` vyrobí celou složku pro produktové listy naráz: nárys každé
 velikosti, jeden bokorys (hloubka i výška jsou u všech stejné), iso nejmenší
 skříně bez kót a záda s roztečemi na zeď. Všechno v jednom měřítku, takže to
 jde postavit vedle sebe. Který kus dostane iso, bokorys a záda, říkají
-přepínače `--iso`, `--bokorys` a `--zada` maskou na jméno souboru.
+přepínače `--iso`, `--bokorys` a `--zada` maskou na jméno souboru; místo
+masky se dá říct `vse` nebo `nic`. `--meritko 1.0` dává milimetr na pixel —
+rozměr se pak dá z obrázku odečíst rovnou.
 
 `montaz.py` je ta část se zády zvlášť. Hledá v zadním průmětu dvě řady
 průchozích děr ⌀9, okótuje rozteče v horní liště a svislý odstup obou lišt.
@@ -94,9 +98,11 @@ jiného.
 `brain.py` vymění nejpravější modul přihrádek za **brain** — sloupec
 s elektronikou místo schránek. Zarovnává podle dvou navařovacích matic
 nahoře, které jsou v obou modelech. Plech sloupce, který si brain nese po
-svém, ze skříně vypadne, aby tam nestály dva přes sebe. Záslepku do otvoru
-pro fabku umístí fabka, ta je v obou modelech taky. Výstupem je STEP se
-zachovanou strukturou i názvy a k němu nárys a iso.
+svém, ze skříně vypadne, aby tam nestály dva přes sebe; je to ten u levého
+kraje vyjímaného modulu. Záslepku do otvoru pro fabku umístí fabka, ta je
+v obou modelech taky. Výstupem je STEP se zachovanou strukturou i názvy —
+kreslí se až potom, `nacrtky.py` nad výstupním adresářem. Místo souboru
+snese i adresář a projede celou řadu velikostí.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -142,6 +148,11 @@ to pomalé, kreslení skoro nic, takže se všechno promítne napřed a kreslí 
 až s měřítkem na ruce. Tloušťka čar a velikost písma se drží nominální
 šířky, ne skutečné, aby byly napříč řadou stejné.
 
+Náčrtky B3 se kreslí v `--meritko 1.0`, tedy **milimetr na pixel**. Měřítko
+dopočítané na danou šířku vyjde na číslo jako 0,9519, které nikomu nic
+neříká; s jedničkou se rozměr z obrázku odečte rovnou a kóty jdou ověřit
+pravítkem v prohlížeči.
+
 **Kružnice přežijí průmět.** Díra v rovné stěně se promítne zase jako
 kružnice, a OCCT ji takovou i vrátí — i s poloměrem a středem v rovině
 průmětu. Díry se proto nehledají v modelu a nic se nepřepočítává zpátky:
@@ -164,9 +175,18 @@ by vrátil jen hromadu těles bez jmen.
 **Zarovnává se podle dílů, ne podle souřadnic.** Dvojice matic určuje polohu
 i natočení. `brain.py` si napřed ověří, že obě dvojice mají stejné rozestupy,
 a teprve pak počítá rozdíl středů — kdyby se díly lišily, skončí chybou,
-místo aby je napasoval násilím. Vyšlo při tom najevo, že brain je už
-namodelovaný v soustavě třísloupcové skříně: zbývá posun 0,4 mm ve svislici,
-a to jen proto, že brain veze o 0,4 mm kratší revizi plechu sloupce.
+místo aby je napasoval násilím.
+
+**Značka, která se opakuje, není značka.** Matice vypadají ve všech sloupcích
+stejně, takže hledat podle nich ten správný plech znamená trefit se do toho,
+na který se narazí dřív. U třísloupce to vyšlo, u dvousloupce by brain
+přistál o celou rozteč vedle skříně. Plech se proto vybírá podle polohy vůči
+vyjímanému modulu a nakonec se ověří, že brain opravdu padl do místa po něm.
+Posuny pak vyjdou na násobky rozteče 180 mm, a to je samo o sobě kontrola.
+
+Vyšlo při tom najevo, že brain je namodelovaný přesně v soustavě třísloupcové
+skříně: tam zbývá posun 0,4 mm ve svislici, a to jen proto, že brain veze
+o 0,4 mm kratší revizi plechu sloupce.
 
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů

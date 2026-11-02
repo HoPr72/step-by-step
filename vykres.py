@@ -333,11 +333,12 @@ def render(src: str, out: str, view: str = "zepredu", width: int = 1600,
 
 
 def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
-               transparent: bool = False) -> list[dict]:
+               transparent: bool = False, scale: float | None = None) -> list[dict]:
     """Celá řada v jednom měřítku: nejširší kus vyjde na `width`, ostatní poměrně menší.
 
     Teprve tak jdou obrázky postavit vedle sebe — každý zvlášť roztažený na
-    stejnou šířku by malou skříň ukázal větší než velkou.
+    stejnou šířku by malou skříň ukázal větší než velkou. Se zadaným
+    `scale` se `width` použije už jen na tloušťku čar a velikost písma.
     """
     import stepkit
 
@@ -351,7 +352,8 @@ def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
             raise ValueError(f"{os.path.basename(src)}: průmět nevrátil žádné hrany")
         jobs.append((src, polys, bbox, extent(polys)))
 
-    scale = fit_scale(width, max(e[1] - e[0] for _s, _p, _b, e in jobs))
+    if scale is None:
+        scale = fit_scale(width, max(e[1] - e[0] for _s, _p, _b, e in jobs))
 
     out = []
     for src, polys, bbox, _e in jobs:

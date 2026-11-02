@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Výměna krajního modulu přihrádek za brain — modul s elektronikou.
 
-    python brain.py "…/Skrin varianta 3 sloupce.stp" "…/s-brainem"
+    python brain.py "…/Skrin varianta 3 sloupce.stp" "…/s-brainem/STEP"
+    python brain.py "…/Vykresy PDF revize 3/STEP"    "…/s-brainem/STEP"
 
 Ze skříně vypadne nejpravější modul přihrádek a plech sloupce, který si brain
 nese po svém, a místo nich se vloží brain zarovnaný podle dvou navařovacích
@@ -9,14 +10,15 @@ matic nahoře. Nakonec se doplní záslepka do otvoru pro fabku vpravo nahoře;
 její polohu určí fabka, která je v obou modelech.
 
 Výsledkem je STEP se zachovanou strukturou i názvy, takže se dá otevřít
-v CADu, a k němu nárys a iso.
+v CADu. Když se místo souboru zadá adresář, projede se celá řada velikostí.
+Kreslí se až potom, `nacrtky.py` nad výstupním adresářem.
 """
 
 from __future__ import annotations
 
 import argparse
+import glob
 import os
-import sys
 
 import stepkit
 from OCP.collections import Sequence_TDF_Label
@@ -90,6 +92,13 @@ def stred(shape):
     return [(lo[i] + hi[i]) / 2 for i in range(3)]
 
 
+def obal(shapes):
+    """Obalový kvádr přes víc těles."""
+    kvadry = [stepkit._bbox(s) for s in shapes]
+    return ([min(k[0][i] for k in kvadry) for i in range(3)],
+            [max(k[1][i] for k in kvadry) for i in range(3)])
+
+
 def jmenem(uzly, zacatek, depth=None):
     out = [u for u in uzly if u["name"].startswith(zacatek)]
     return [u for u in out if depth is None or u["depth"] == depth]
@@ -121,6 +130,20 @@ def posun(odkud, kam):
         if max(abs(a[k] - b[k]) for k in range(3)) > TOLERANCE:
             raise ValueError("matice nejsou rozmístěné stejně, samotný posun nestačí")
     return [(kam[0][k] - odkud[0][k] + kam[1][k] - odkud[1][k]) / 2 for k in range(3)]
+
+
+def _overu_misto(buzly, modul, delta, podil=0.9):
+    """Brain musí po zarovnání padnout do místa po modulu, ne vedle něj.
+
+    Sloupce vypadají jeden jako druhý, takže špatně vybraný plech by posunul
+    brain o celou rozteč a nikde by to nezaskřípalo.
+    """
+    blo, bhi = obal([u["shape"] for u in buzly if u["depth"] == 0])
+    mlo, mhi = stepkit._bbox(modul["shape"])
+    prekryv = (min(bhi[0] + delta[0], mhi[0]) - max(blo[0] + delta[0], mlo[0]))
+    if prekryv < podil * (mhi[0] - mlo[0]):
+        raise SystemExit(f"brain by místo po modulu kryl jen z "
+                         f"{max(prekryv, 0) / (mhi[0] - mlo[0]):.0%}, zarovnání nesedí")
 
 
 def _loc(delta):
@@ -158,19 +181,17 @@ def vymen(skrin, brain, zaslepka, out):
     modul = max(moduly, key=lambda u: stred(u["shape"])[0])
 
     # Brain se veze s vlastní verzí plechu sloupce; ten ze skříně musí pryč,
-    # jinak by tam stály dva přes sebe. Pozná se podle matic — zarovnává se
-    # na ně a zároveň jsou to ty, které brain duplikuje.
-    bmatice = dvojice_matic(buzly)
+    # jinak by tam stály dva přes sebe. Je to ten u levého kraje vyjímaného
+    # modulu — brain si nese jeho kopii na témž místě vůči sobě. Podle matic
+    # ho hledat nejde, ve všech sloupcích vypadají stejně.
     plechy = jmenem(uzly, PLECH, depth=1)
-    sedi = [(p, dvojice_matic(uzly, p)) for p in plechy]
-    sedi = [(p, m) for p, m in sedi
-            if abs(m[0][0] - bmatice[0][0]) < TOLERANCE
-            and abs(m[0][1] - bmatice[0][1]) < TOLERANCE]
-    if len(sedi) != 1:
-        raise SystemExit(f"matice brainu sedí na {len(sedi)} plechů, čekám jeden")
-    plech, smatice = sedi[0]
+    if not plechy:
+        raise SystemExit(f"ve skříni není žádný {PLECH!r}")
+    kraj = stepkit._bbox(modul["shape"])[0][0]
+    plech = min(plechy, key=lambda p: abs(stred(p["shape"])[0] - kraj))
 
-    delta = posun(bmatice, smatice)
+    delta = posun(dvojice_matic(buzly), dvojice_matic(uzly, plech))
+    _overu_misto(buzly, modul, delta)
 
     # Záslepku umístí fabka, která je v obou modelech.
     fabky = [jmenem(u, FABKA) for u in (zuzly, uzly)]
@@ -204,19 +225,24 @@ def vymen(skrin, brain, zaslepka, out):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("skrin")
+    ap.add_argument("skrin", help="STEP skříně, nebo adresář s celou řadou")
     ap.add_argument("outdir")
     ap.add_argument("--brain", help="brain.step; bez něj se hledá vedle skříně")
     ap.add_argument("--zaslepka", help="zaslepka_Fab_kryt.step")
-    ap.add_argument("--sirka", type=int, default=1600)
-    ap.add_argument("--meritko", type=float, help="px na milimetr, kvůli společné řadě")
-    ap.add_argument("--bez-kreseb", action="store_true")
     opts = ap.parse_args()
+
+    if os.path.isdir(opts.skrin):
+        files = sorted(glob.glob(os.path.join(opts.skrin, "*.stp"))
+                       + glob.glob(os.path.join(opts.skrin, "*.step")))
+        if not files:
+            raise SystemExit(f"v {opts.skrin} nejsou žádné STEP soubory")
+    else:
+        files = [opts.skrin]
 
     def vedle(cesta, jmeno):
         if cesta:
             return cesta
-        here = os.path.dirname(os.path.abspath(opts.skrin))
+        here = os.path.dirname(os.path.abspath(files[0]))
         for _ in range(4):
             kandidat = os.path.join(here, jmeno)
             if os.path.exists(kandidat):
@@ -224,26 +250,18 @@ def main() -> int:
             here = os.path.dirname(here)
         raise SystemExit(f"nenašel jsem {jmeno}, zadej cestu přepínačem")
 
+    brain = vedle(opts.brain, "brain.step")
+    zaslepka = vedle(opts.zaslepka, "zaslepka_Fab_kryt.step")
     os.makedirs(opts.outdir, exist_ok=True)
-    jmeno = os.path.basename(opts.skrin).rsplit(".", 1)[0] + " s brainem.step"
-    info = vymen(opts.skrin, vedle(opts.brain, "brain.step"),
-                 vedle(opts.zaslepka, "zaslepka_Fab_kryt.step"),
-                 os.path.join(opts.outdir, jmeno))
 
-    print(f"{jmeno}  ({os.path.getsize(info['out']) / 1e6:.1f} MB)")
-    print(f"  pryč: modul na x {info['modul'][0]:.1f} a plech sloupce na x {info['plech'][0]:.1f}")
-    print(f"  brain: {info['dilu']} dílů, posun podle matic {info['posun']} mm")
-    print(f"  záslepka: posun podle fabky {info['zaslepka']} mm")
-    if opts.bez_kreseb:
-        return 0
-
-    import vykres
-    for view, pripona in (("zepredu", ""), ("iso", "-iso")):
-        png = os.path.join(opts.outdir, stepkit.slugify(info["out"]) + pripona + ".png")
-        k = vykres.render(info["out"], png, view=view, width=opts.sirka,
-                          scale=opts.meritko, dims=[] if view == "iso" else None)
-        print(f"  {os.path.basename(png):<46}{k['px'][0]:>5} ×{k['px'][1]:>5} px"
-              f"  (měřítko {k['meritko']:.4f} px/mm)")
+    for src in files:
+        jmeno = os.path.basename(src).rsplit(".", 1)[0] + " s brainem.step"
+        info = vymen(src, brain, zaslepka, os.path.join(opts.outdir, jmeno))
+        print(f"{jmeno}  ({os.path.getsize(info['out']) / 1e6:.1f} MB)")
+        print(f"  pryč: modul na x {info['modul'][0]:.1f}"
+              f" a plech sloupce na x {info['plech'][0]:.1f}")
+        print(f"  brain: {info['dilu']} dílů, posun podle matic {info['posun']} mm")
+        print(f"  záslepka: posun podle fabky {info['zaslepka']} mm")
     return 0
 
 
