@@ -10,6 +10,7 @@ PIL totiž čáry nevyhlazuje a bez toho jsou šikmé hrany zubaté.
 
 from __future__ import annotations
 
+import math
 import os
 
 from PIL import Image, ImageDraw, ImageFont
@@ -43,9 +44,12 @@ def _font(px: int):
 
 
 def _mm(value: float) -> str:
-    """Rozměr do popisku kóty, s desetinnou čárkou a bez zbytečných nul."""
-    text = f"{value:.1f}".rstrip("0").rstrip(".")
-    return text.replace(".", ",")
+    """Kóta na celé milimetry nahoru, ať rozměr nikdy nepodstřelíme.
+
+    Tolerance pohlídá případ, kdy je rozměr celé číslo a vyjde jako
+    1500.0000000001 — bez ní by z toho byla kóta o milimetr větší.
+    """
+    return str(math.ceil(value - 1e-6))
 
 
 # --------------------------------------------------------------------------
