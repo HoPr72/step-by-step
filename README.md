@@ -62,14 +62,21 @@ $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
 
 Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmět bez
 perspektivy, jen viditelné hrany, okótovaná šířka dole a výška vlevo.
-Přepínače `--pohled zepredu|zezadu|zboku|shora|zdola|iso|iso-zdola`,
+Přepínače `--pohled zepredu|zezadu|zboku|zleva|shora|zdola|iso|iso-zdola`,
 `--sirka` v pixelech a `--pruhledne` pro pozadí bez bílé. Kosoúhlé pohledy
 se nekótují — žádná hrana obrázku tam neodpovídá rozměru tělesa.
 
-Pohledy počítají s **osou Z nahoru**, jak je v CADu zvykem. Ploché zařízení
-ale bývá namodelované naležato v rovině XY a čelem dolů; pak je čelní pohled
-`zdola`, zadní `shora` a product shot `iso-zdola`. Pozná se to podle toho,
-kterým směrem je tenký rozměr a kde v něm leží displej.
+Pohledy vycházejí z toho, **jak model leží**. Výchozí je CAD zvyk: osa Z
+svisle, čelo proti ose Y. Když je model posazený jinak, řekne se to dvojicí
+`--celo` a `--nahoru` a zbytek z toho plyne — bok je kolmý na obojí, záda
+jsou proti čelu, iso je součet všech tří směrů:
+
+```bash
+$PY cli.py vykres "GK3_v5.step" celo.png --celo=-Z --nahoru=+X --meritko 3.0
+```
+
+Znaménko se píše s rovnítkem (`--celo=-Z`), jinak si `-Z` příkazová řádka
+splete s přepínačem.
 
 Příkaz `sada` zpracuje celou řadu velikostí najednou a dá jim **společné
 měřítko**: nejširší kus vyjde na `--sirka`, ostatní poměrně menší, takže se
@@ -195,6 +202,13 @@ Posuny pak vyjdou na násobky rozteče 180 mm, a to je samo o sobě kontrola.
 Vyšlo při tom najevo, že brain je namodelovaný přesně v soustavě třísloupcové
 skříně: tam zbývá posun 0,4 mm ve svislici, a to jen proto, že brain veze
 o 0,4 mm kratší revizi plechu sloupce.
+
+**Jak model leží, z modelu nevyčteš.** Soustava souřadnic nese jen to, co do
+ní kdo dal; že je GK3 na výšku, že členitá hrana je dole a konektory míří
+k zemi, v souboru nikde nestojí. Geometrie svádí ke špatnému odhadu: displej
+je sám o sobě na šířku a nápisy na zádech jsou psané podél hrany. Proto
+orientace není v kódu natvrdo, ale zadává se dvojicí os — a pozná se podle
+toho, že se nápisy na zádech čtou vodorovně.
 
 **Co není vidět, nemusí tam být.** Model displeje s sebou vezl celý svůj
 vnitřek — osazenou desku a na ní 156 SMD součástek, distanční sloupky,

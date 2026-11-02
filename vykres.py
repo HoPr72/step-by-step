@@ -22,18 +22,9 @@ from PIL import Image, ImageDraw, ImageFont
 #: Kolikrát větší plátno se kreslí, než je výsledek.
 SUPERSAMPLE = 4
 
-#: Pohled → (odkud se kouká, co je nahoře, osy modelu ve vodorovném a svislém
-#: směru). Bez os se nedá automaticky kótovat — u kosoúhlého pohledu žádná
-#: hrana obrázku neodpovídá rozměru tělesa.
-VIEWS = {
-    "zepredu": ((0, -1, 0), (0, 0, 1), ("X", "Z")),
-    "zezadu": ((0, 1, 0), (0, 0, 1), ("X", "Z")),
-    "zboku": ((1, 0, 0), (0, 0, 1), ("Y", "Z")),
-    "shora": ((0, 0, 1), (0, 1, 0), ("X", "Y")),
-    "zdola": ((0, 0, -1), (0, 1, 0), ("X", "Y")),
-    "iso": ((1, -1, 1), (0, 0, 1), None),
-    "iso-zdola": ((1, -1, -1), (0, 0, -1), None),
-}
+#: Jak model leží: odkud se díváme na čelo a co má být na obrázku nahoře.
+#: Výchozí je CAD zvyk — osa Z svisle, čelo proti ose Y.
+BAZE = ((0, -1, 0), (0, 0, 1))
 
 FONTS = (
     "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -66,11 +57,61 @@ def _round_up(value: float, step: int) -> int:
     return int(math.ceil(value / step - 1e-9)) * step
 
 
-def _view(name: str):
+def osa(text: str):
+    """``-Z``, ``z``, ``+X`` na jednotkový vektor."""
+    text = str(text).strip().upper()
+    znak = -1 if text.startswith("-") else 1
+    pismeno = text.lstrip("+-")
+    if pismeno not in ("X", "Y", "Z"):
+        raise ValueError(f"osu čekám jako ±X/±Y/±Z, ne {text!r}")
+    return tuple(znak if o == pismeno else 0 for o in "XYZ")
+
+
+def _krat(a, b):
+    return (a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _pismeno(v):
+    """Osa, ve které vektor leží — kvůli popiskům rozměrů."""
+    return "XYZ"[max(range(3), key=lambda i: abs(v[i]))]
+
+
+def pohledy(celo=BAZE[0], nahoru=BAZE[1]) -> dict:
+    """Pohled → (odkud se kouká, co je nahoře, osy modelu vodorovně a svisle).
+
+    Stačí říct, kde má model čelo a kde nahoru; bok, záda, půdorys i kosoúhlý
+    pohled z toho plynou. Bez os se nedá automaticky kótovat — u kosoúhlého
+    pohledu žádná hrana obrázku neodpovídá rozměru tělesa.
+    """
+    if _pismeno(celo) == _pismeno(nahoru):
+        raise ValueError("čelo a nahoru musí být různé osy")
+    vpravo = _krat(nahoru, celo)
+    zad, vz, hl = (lambda v: tuple(-x for x in v)), _pismeno(nahoru), _pismeno(celo)
+    sir = _pismeno(vpravo)
+    return {
+        "zepredu": (celo, nahoru, (sir, vz)),
+        "zezadu": (zad(celo), nahoru, (sir, vz)),
+        "zboku": (vpravo, nahoru, (hl, vz)),
+        "zleva": (zad(vpravo), nahoru, (hl, vz)),
+        "shora": (nahoru, zad(celo), (sir, hl)),
+        "zdola": (zad(nahoru), celo, (sir, hl)),
+        "iso": (tuple(celo[i] + vpravo[i] + nahoru[i] for i in range(3)), nahoru, None),
+        "iso-zdola": (tuple(celo[i] + vpravo[i] - nahoru[i] for i in range(3)),
+                      nahoru, None),
+    }
+
+
+VIEWS = pohledy()
+
+
+def _view(name: str, baze=None):
+    views = pohledy(*baze) if baze else VIEWS
     try:
-        return VIEWS[name]
+        return views[name]
     except KeyError:
-        raise ValueError(f"neznámý pohled {name!r}, čekám {'/'.join(VIEWS)}") from None
+        raise ValueError(f"neznámý pohled {name!r}, čekám {'/'.join(views)}") from None
 
 
 # --------------------------------------------------------------------------
@@ -116,7 +157,7 @@ def fit_scale(width: int, span_mm: float) -> float:
 # průmět
 # --------------------------------------------------------------------------
 
-def project(src: str, view: str):
+def project(src: str, view: str, baze=None):
     """Průmět tělesa: lomené čáry, obalový kvádr a kružnice.
 
     Kružnice se vracejí zvlášť i se středem a poloměrem — v rovině průmětu,
@@ -125,7 +166,7 @@ def project(src: str, view: str):
     """
     from build123d import Vector, import_step
 
-    direction, up, _axes = _view(view)
+    direction, up, _axes = _view(view, baze)
     shape = import_step(src)
     bbox = shape.bounding_box()
     shape = shape.translate(-bbox.center())
@@ -252,7 +293,7 @@ def _dim(a, b, off, to_px, k, g, font, dr=None, img=None):
 
 def draw(polys, bbox, out: str, view: str = "zepredu", width: int = 1600,
          transparent: bool = False, scale: float | None = None,
-         dims=None) -> dict:
+         dims=None, baze=None) -> dict:
     """Hotový průmět na papír.
 
     `scale` je v px na milimetr. Bez něj se kresba roztáhne na `width` pixelů —
@@ -265,7 +306,7 @@ def draw(polys, bbox, out: str, view: str = "zepredu", width: int = 1600,
     if not polys:
         raise ValueError("průmět nevrátil žádné hrany")
 
-    axes = _view(view)[2]
+    axes = _view(view, baze)[2]
     sizes = {"X": bbox.size.X, "Y": bbox.size.Y, "Z": bbox.size.Z}
 
     px0, px1, py0, py1 = extent(polys)
@@ -327,15 +368,17 @@ def draw(polys, bbox, out: str, view: str = "zepredu", width: int = 1600,
 
 
 def render(src: str, out: str, view: str = "zepredu", width: int = 1600,
-           transparent: bool = False, scale: float | None = None, dims=None) -> dict:
+           transparent: bool = False, scale: float | None = None, dims=None,
+           baze=None) -> dict:
     """Jeden STEP na jednu perokresbu. Vrací rozměry v mm a použité měřítko."""
-    polys, bbox, _circles = project(src, view)
+    polys, bbox, _circles = project(src, view, baze)
     return draw(polys, bbox, out, view=view, width=width,
-                transparent=transparent, scale=scale, dims=dims)
+                transparent=transparent, scale=scale, dims=dims, baze=baze)
 
 
 def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
-               transparent: bool = False, scale: float | None = None) -> list[dict]:
+               transparent: bool = False, scale: float | None = None,
+               baze=None) -> list[dict]:
     """Celá řada v jednom měřítku: nejširší kus vyjde na `width`, ostatní poměrně menší.
 
     Teprve tak jdou obrázky postavit vedle sebe — každý zvlášť roztažený na
@@ -344,12 +387,12 @@ def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
     """
     import stepkit
 
-    _view(view)
+    _view(view, baze)
     os.makedirs(outdir, exist_ok=True)
 
     jobs = []
     for src in sources:
-        polys, bbox, _circles = project(src, view)
+        polys, bbox, _circles = project(src, view, baze)
         if not polys:
             raise ValueError(f"{os.path.basename(src)}: průmět nevrátil žádné hrany")
         jobs.append((src, polys, bbox, extent(polys)))
@@ -361,7 +404,7 @@ def render_set(sources, outdir: str, view: str = "zepredu", width: int = 1600,
     for src, polys, bbox, _e in jobs:
         target = os.path.join(outdir, stepkit.slugify(src) + ".png")
         info = draw(polys, bbox, target, view=view, width=width,
-                    transparent=transparent, scale=scale)
+                    transparent=transparent, scale=scale, baze=baze)
         info["src"] = src
         out.append(info)
     return out

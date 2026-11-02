@@ -97,6 +97,19 @@ def cmd_png(args: list[str]) -> int:
     return 0
 
 
+def _baze(opts, vykres):
+    """Dvojice os, jak model leží — None znamená CAD zvyk, Z nahoru."""
+    if not (opts.celo or opts.nahoru):
+        return None
+    return (vykres.osa(opts.celo) if opts.celo else vykres.BAZE[0],
+            vykres.osa(opts.nahoru) if opts.nahoru else vykres.BAZE[1])
+
+
+def _pridej_bazi(ap):
+    ap.add_argument("--celo", help="osa, ze které je vidět čelo (výchozí -Y)")
+    ap.add_argument("--nahoru", help="osa, která má být na obrázku nahoře (výchozí +Z)")
+
+
 def cmd_vykres(args: list[str]) -> int:
     import argparse
 
@@ -110,10 +123,12 @@ def cmd_vykres(args: list[str]) -> int:
     ap.add_argument("--meritko", type=float,
                     help="px na milimetr; bez něj se kresba roztáhne na --sirka")
     ap.add_argument("--pruhledne", action="store_true", help="průhledné pozadí")
+    _pridej_bazi(ap)
     opts = ap.parse_args(args)
 
     info = vykres.render(opts.src, opts.out, view=opts.pohled, width=opts.sirka,
-                         transparent=opts.pruhledne, scale=opts.meritko)
+                         transparent=opts.pruhledne, scale=opts.meritko,
+                         baze=_baze(opts, vykres))
     print(f"{opts.out}  {info['px'][0]}×{info['px'][1]} px"
           f"  (měřítko {info['meritko']:.4f} px/mm)")
     print(f"  kóty: šířka {info['sirka']:.2f} mm, výška {info['vyska']:.2f} mm"
@@ -135,10 +150,12 @@ def cmd_sada(args: list[str]) -> int:
     ap.add_argument("--sirka", type=int, default=1600,
                     help="šířka PNG nejširšího kusu v pixelech")
     ap.add_argument("--pruhledne", action="store_true", help="průhledné pozadí")
+    _pridej_bazi(ap)
     opts = ap.parse_args(args)
 
     infos = vykres.render_set(opts.src, opts.outdir, view=opts.pohled,
-                              width=opts.sirka, transparent=opts.pruhledne)
+                              width=opts.sirka, transparent=opts.pruhledne,
+                              baze=_baze(opts, vykres))
     for info in infos:
         print(f"  {os.path.basename(info['out'])[:40]:<42}"
               f"{info['px'][0]:>5} ×{info['px'][1]:>5} px"
