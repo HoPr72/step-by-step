@@ -24,8 +24,8 @@ systémově a `conda base` zůstane nedotčená.
 
 Otevře se v prohlížeči. Server projde zadané adresáře včetně podadresářů,
 najde STEP soubory a převádí je na vyžádání — výsledek si keší v `cache/`
-podle času změny zdroje, takže podruhé je to okamžité. Na obsazeném portu
-zkusí dalších devět.
+podle času změny zdroje, takže podruhé je to okamžité. Výchozí port je 8791
+(`--port` ho přepíše); když je obsazený, zkusí dalších devět.
 
 Tlačítko **SYSTÉMOVÝ DIALOG…** otevře nativní macOS dialog, takže se dá
 sáhnout i mimo zadané kořeny.
@@ -46,7 +46,7 @@ Na trackpadu bez prostředního tlačítka: `Alt`+tažení otáčí, `Cmd`+taže
 
 **Kótování:** zapni `KÓTA`, klikni dva body. Kurzor se přichytí na rohy a hrany
 tělesa pod ním. Popisek kóty jde přetáhnout mimo kresbu — koncové body zůstanou
-na místě a doplní se pomocné čáry. Dvojklik kótu smaže.
+na místě a doplní se vynášecí čáry. Dvojklik kótu smaže.
 
 ## Příkazová řádka
 
@@ -80,6 +80,13 @@ Některé exporty ze SolidWorks mají náhradní znaky zapsané **rovnou ve zdro
 
 **Osa Z je svislá**, jak je v CADu zvykem. three.js počítá s Y nahoru, takže
 prohlížeč přepíná `camera.up` — bez toho ukazuje pohled zboku shora.
+
+**Kóta má jediný stupeň volnosti navíc.** Leží v rovině, která prochází měřenou
+úsečkou: kótovací čára je s ní rovnoběžná a vynášecí čáry na ni kolmé, jak to
+předepisuje norma. Volné zůstává natočení té roviny kolem úsečky, a to se
+přichytává po 45° k hlavní ose nejméně rovnoběžné s měřenou úsečkou — u
+vodorovné kóty tedy sedne do roviny Front nebo Top, nebo na půlku mezi nimi.
+Tažení myší nastavuje jen odstup; podélná složka se zahazuje.
 
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů

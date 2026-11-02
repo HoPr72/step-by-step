@@ -39,16 +39,19 @@
     color-scheme: dark;
   }
 
+  /* Prohlížeč vyplní okno: stránka se neroluje, roluje se obsah panelů. */
+  *, *::before, *::after { box-sizing: border-box; }
   body {
     background: var(--bg); color: var(--fg);
     font-family: var(--font-sans); line-height: 1.5;
+    margin: 0; height: 100dvh; overflow: hidden;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
-    padding-block: 20px 36px;
+    padding-block: 16px;
   }
-  .wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .wrap { height: 100%; display: flex; flex-direction: column; gap: 12px; }
 
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
   h1 { font-size: 1.3rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
   .meta { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
 
@@ -69,14 +72,22 @@
   #openbtn b { font-weight: 600; }
   #openbtn i { font-style: normal; color: var(--faint); font-size: .9em; }
 
-  .cols { display: grid; grid-template-columns: minmax(0, 1.52fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-  @media (max-width: 920px) { .cols { grid-template-columns: 1fr; } }
+  .cols {
+    flex: 1; min-height: 0; display: grid; gap: 14px; align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 440px);
+  }
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+
+  /* Pravý sloupec: tabulka těles roste s oknem, zbytek si drží svoji výšku. */
+  .side { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
+  .parts-panel { flex: 0 1 auto; min-height: 120px; display: flex; flex-direction: column; }
+  .parts-panel > .block { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .info-panel { flex: none; }
+  .side > footer { flex: none; margin-top: auto; }   /* krátký seznam nenafukuje panel */
 
   /* ---- scéna ---- */
   .stage { position: relative; overflow: hidden; }
-  #canvas-host { height: min(66vh, 600px); min-height: 340px; width: 100%; }
-  @media (max-width: 920px) { #canvas-host { height: 50vh; min-height: 300px; } }
+  #canvas-host { height: 100%; width: 100%; }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   .stage[data-mode="measure"] canvas { cursor: crosshair; }
 
@@ -163,7 +174,7 @@
   }
   h2 em { font-style: normal; text-transform: none; letter-spacing: 0; }
 
-  .listwrap { max-height: 300px; overflow-y: auto; margin: -2px -4px; padding: 0 4px; }
+  .listwrap { flex: 1; min-height: 0; overflow-y: auto; margin: -2px -4px; padding: 0 4px; }
   table { border-collapse: collapse; width: 100%; font-size: .82rem; }
   thead th {
     font-family: var(--font-mono); font-weight: 500; font-size: .66rem;
@@ -214,6 +225,16 @@
     background: var(--sunk); border: 1px solid var(--line);
     border-radius: 3px; padding: 0 4px;
   }
+
+  /* ---- úzké okno: zpátky na obyčejnou rolovací stránku ---- */
+  @media (max-width: 920px) {
+    body { height: auto; overflow: visible; padding-block: 16px 28px; }
+    .wrap { height: auto; }
+    .cols { grid-template-columns: 1fr; }
+    #canvas-host { height: 50vh; min-height: 300px; }
+    .parts-panel { flex: none; }
+    .listwrap { flex: none; max-height: 300px; }
+  }
 </style>
 
 <div class="wrap">
@@ -243,8 +264,8 @@
       <div class="loading" id="loading">načítám…</div>
     </section>
 
-    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
-      <section class="panel">
+    <div class="side">
+      <section class="panel parts-panel">
         <div class="block">
           <h2>Tělesa <em id="count"></em></h2>
           <div class="listwrap">
@@ -256,7 +277,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel info-panel">
         <div class="block">
           <h2>Obrysový rozměr <em class="scope" id="scope"></em></h2>
           <div class="dimbig" id="overall">—</div>
@@ -277,16 +298,17 @@
           </div>
         </div>
       </section>
+
+      <footer>
+        <b>Myš:</b> levé tlačítko vybírá (klik nebo tažení rámečkem), prostřední posouvá, pravé otáčí, kolečko zoom.
+        <kbd>Shift</kbd> přidává do výběru, <kbd>Esc</kbd> ruší. Na trackpadu: <kbd>Alt</kbd>+tažení otáčí, <kbd>Cmd</kbd>+tažení posouvá.
+        <b>Kótování:</b> <kbd>KÓTA</kbd> (nebo <kbd>M</kbd>) a dva kliky — kurzor se přichytí na rohy a hrany tělesa pod ním.
+        Popisek kóty <b>táhni myší</b>: odsazení je vždy kolmé na měřenou úsečku a přichytává se po 45°
+        k hlavním rovinám. Dvojklikem kótu smažeš.
+        Skrytá tělesa zmizí ze scény, ale do objemu a hmotnosti celé sestavy se počítají dál.
+      </footer>
     </div>
   </div>
-
-  <footer>
-    <b>Myš:</b> levé tlačítko vybírá (klik nebo tažení rámečkem), prostřední posouvá, pravé otáčí, kolečko zoom.
-    <kbd>Shift</kbd> přidává do výběru, <kbd>Esc</kbd> ruší. Na trackpadu: <kbd>Alt</kbd>+tažení otáčí, <kbd>Cmd</kbd>+tažení posouvá.
-    <b>Kótování:</b> <kbd>KÓTA</kbd> (nebo <kbd>M</kbd>) a dva kliky — kurzor se přichytí na rohy a hrany tělesa pod ním.
-    Popisek kóty <b>táhni myší</b> a vytáhneš ji mimo kresbu, koncové body zůstanou na místě; dvojklikem ji smažeš.
-    Skrytá tělesa zmizí ze scény, ale do objemu a hmotnosti celé sestavy se počítají dál.
-  </footer>
 </div>
 
 <div id="browser" hidden>
@@ -668,8 +690,39 @@ function snapAt(cx, cy) {
   return best || hit.point.clone();
 }
 
-// Kóta drží koncové body a posuv: čára i popisek se dají vytáhnout mimo kresbu,
-// přes pomocné čáry zpět k měřeným bodům, jak je to v CADu zvykem.
+// Kóta leží v rovině, která prochází měřenou úsečkou: kótovací čára je s ní
+// rovnoběžná a vynášecí čáry na ni kolmé. Volná zůstává rotace kolem úsečky,
+// a ta se přichytává po 45° k nejbližší hlavní rovině.
+const SNAP_STEP = Math.PI / 4;
+const AXES = [[0, 0, 1], [1, 0, 0], [0, 1, 0]];   // Z napřed: u vodorovné kóty chceme svislé odsazení
+
+function dimFrame(a, b) {
+  const axis = new THREE.Vector3().subVectors(b, a);
+  if (axis.lengthSq() < 1e-12) return null;
+  axis.normalize();
+  // Referenční směr je hlavní osa nejméně rovnoběžná s měřenou úsečkou.
+  let e1 = null, best = Infinity;
+  for (const a3 of AXES) {
+    const v = new THREE.Vector3(...a3);
+    const d = Math.abs(v.dot(axis));
+    if (d < best - 1e-6) { best = d; e1 = v; }
+  }
+  e1.addScaledVector(axis, -e1.dot(axis)).normalize();
+  const e2 = new THREE.Vector3().crossVectors(axis, e1).normalize();
+  return { axis, e1, e2 };
+}
+
+function constrainOffset(dim, raw) {
+  const f = dim.frame;
+  if (!f) return raw.clone();
+  const u = raw.dot(f.e1), v = raw.dot(f.e2);        // podélná složka se zahodí
+  if (Math.hypot(u, v) < 1e-6) return new THREE.Vector3();
+  const ang = Math.round(Math.atan2(v, u) / SNAP_STEP) * SNAP_STEP;
+  const cos = Math.cos(ang), sin = Math.sin(ang);
+  return f.e1.clone().multiplyScalar(cos).addScaledVector(f.e2, sin)
+    .multiplyScalar(u * cos + v * sin);
+}
+
 function addDim(a, b) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
@@ -690,10 +743,11 @@ function addDim(a, b) {
   el.innerHTML = `${cz(dist)} mm` +
     ([dx, dy, dz].filter((v) => v > 0.005).length > 1
       ? `<span>Δ ${cz(dx, 1)} / ${cz(dy, 1)} / ${cz(dz, 1)}</span>` : '');
-  el.title = 'Táhni pro odsazení, dvojklik smaže';
+  el.title = 'Táhni pro odsazení — kolmo na kótu, po 45°. Dvojklik smaže.';
   stage.appendChild(el);
 
-  const dim = { a: a.clone(), b: b.clone(), off: new THREE.Vector3(), main, helper, el };
+  const dim = { a: a.clone(), b: b.clone(), off: new THREE.Vector3(), main, helper, el,
+                frame: dimFrame(a, b) };
   dims.push(dim);
   attachDrag(dim);
   updateDimGeometry(dim);
@@ -708,9 +762,14 @@ function updateDimGeometry(dim) {
   m.needsUpdate = true;
   dim.main.geometry.setDrawRange(0, 2);
 
+  // Vynášecí čáry kótu o kousek přesahují, jak se kreslí ve výkresu.
+  const over = dim.off.lengthSq() > 1e-6
+    ? dim.off.clone().setLength(dim.off.length() + radius * 0.015)
+    : dim.off;
+  const a3 = dim.a.clone().add(over), b3 = dim.b.clone().add(over);
   const h = dim.helper.geometry.attributes.position;
-  h.setXYZ(0, dim.a.x, dim.a.y, dim.a.z); h.setXYZ(1, a2.x, a2.y, a2.z);
-  h.setXYZ(2, dim.b.x, dim.b.y, dim.b.z); h.setXYZ(3, b2.x, b2.y, b2.z);
+  h.setXYZ(0, dim.a.x, dim.a.y, dim.a.z); h.setXYZ(1, a3.x, a3.y, a3.z);
+  h.setXYZ(2, dim.b.x, dim.b.y, dim.b.z); h.setXYZ(3, b3.x, b3.y, b3.z);
   h.needsUpdate = true;
   dim.helper.visible = dim.off.lengthSq() > 1e-6;
 }
@@ -747,7 +806,7 @@ function attachDrag(dim) {
   dim.el.addEventListener('pointermove', (e) => {
     if (!origin) return;
     const world = screenDeltaToWorld(e.clientX - origin.x, e.clientY - origin.y, origin.anchor);
-    dim.off.copy(origin.off).add(world);
+    dim.off.copy(constrainOffset(dim, world.add(origin.off)));
     updateDimGeometry(dim);
   });
   const stop = (e) => {

@@ -171,7 +171,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Lokální prohlížeč STEP souborů")
     ap.add_argument("roots", nargs="*", default=None,
                     help="adresáře se STEP soubory (výchozí: aktuální)")
-    ap.add_argument("--port", type=int, default=8787)
+    # 8787 bývá obsazený jinou aplikací, proto začínáme výš.
+    ap.add_argument("--port", type=int, default=8791)
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
 
