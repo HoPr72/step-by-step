@@ -62,9 +62,14 @@ $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
 
 Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmět bez
 perspektivy, jen viditelné hrany, okótovaná šířka dole a výška vlevo.
-Přepínače `--pohled zepredu|zezadu|zboku|shora|iso`, `--sirka` v pixelech
-a `--pruhledne` pro pozadí bez bílé. Kosoúhlé `iso` se nekótuje — žádná hrana
-obrázku tam neodpovídá rozměru tělesa.
+Přepínače `--pohled zepredu|zezadu|zboku|shora|zdola|iso|iso-zdola`,
+`--sirka` v pixelech a `--pruhledne` pro pozadí bez bílé. Kosoúhlé pohledy
+se nekótují — žádná hrana obrázku tam neodpovídá rozměru tělesa.
+
+Pohledy počítají s **osou Z nahoru**, jak je v CADu zvykem. Ploché zařízení
+ale bývá namodelované naležato v rovině XY a čelem dolů; pak je čelní pohled
+`zdola`, zadní `shora` a product shot `iso-zdola`. Pozná se to podle toho,
+kterým směrem je tenký rozměr a kde v něm leží displej.
 
 Příkaz `sada` zpracuje celou řadu velikostí najednou a dá jim **společné
 měřítko**: nejširší kus vyjde na `--sirka`, ostatní poměrně menší, takže se
