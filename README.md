@@ -77,6 +77,7 @@ hodnotou v px/mm, kterou `sada` vypíše.
 ```bash
 $PY nacrtky.py "…/Vykresy PDF revize 3/STEP" "…/B3/nacrtky"
 $PY montaz.py  "…/Skrin varianta 4 sloupce.stp" zada.png --meritko 0.9519
+$PY brain.py   "…/Skrin varianta 3 sloupce.stp" "…/B3/s-brainem" --meritko 0.9519
 ```
 
 `nacrtky.py` vyrobí celou složku pro produktové listy naráz: nárys každé
@@ -89,6 +90,13 @@ přepínače `--iso`, `--bokorys` a `--zada` maskou na jméno souboru.
 průchozích děr ⌀9, okótuje rozteče v horní liště a svislý odstup obou lišt.
 Když záda nevypadají, jak mají, radši skončí chybou, než aby okótoval něco
 jiného.
+
+`brain.py` vymění nejpravější modul přihrádek za **brain** — sloupec
+s elektronikou místo schránek. Zarovnává podle dvou navařovacích matic
+nahoře, které jsou v obou modelech. Plech sloupce, který si brain nese po
+svém, ze skříně vypadne, aby tam nestály dva přes sebe. Záslepku do otvoru
+pro fabku umístí fabka, ta je v obou modelech taky. Výstupem je STEP se
+zachovanou strukturou i názvy a k němu nárys a iso.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -146,6 +154,20 @@ i mimo těleso, takže se nejdřív spočítá obrys všeho včetně popisků a 
 pak se zakládá obrázek. Proto se kóty kreslí dvakrát: napoprvé nanečisto,
 jen aby se změřily.
 
+**Sestavu jde upravit, aniž by se rozsypala.** STEP se čte do XCAF dokumentu
+a ten je editovatelný strom: `RemoveComponent` vyndá modul, `AddComponent`
+přidá díl odjinud. Tvary na dokumentu nezávisí, takže se berou rovnou
+z druhého souboru a jen se jim přepočítá poloha. Zapisuje se přes
+`STEPCAFControl_Writer`, který si nese názvy i strukturu — `STEPControl_Writer`
+by vrátil jen hromadu těles bez jmen.
+
+**Zarovnává se podle dílů, ne podle souřadnic.** Dvojice matic určuje polohu
+i natočení. `brain.py` si napřed ověří, že obě dvojice mají stejné rozestupy,
+a teprve pak počítá rozdíl středů — kdyby se díly lišily, skončí chybou,
+místo aby je napasoval násilím. Vyšlo při tom najevo, že brain je už
+namodelovaný v soustavě třísloupcové skříně: zbývá posun 0,4 mm ve svislici,
+a to jen proto, že brain veze o 0,4 mm kratší revizi plechu sloupce.
+
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů
 to vybere víc, než člověk čeká.
@@ -161,6 +183,7 @@ vykres.py         průmět, měřítko, kóty, kresba do PNG
 cli.py            příkazová řádka (rozmery / png / vykres / sada / json)
 nacrtky.py        celá složka náčrtků pro produktové listy B3
 montaz.py         záda s roztečemi na zeď
+brain.py          výměna krajního modulu za brain
 server.py         lokální server, procházení disku, nativní dialog
 viewer/index.html prohlížeč (three.js, bez build kroku)
 cache/            keš převodů, negitovaná
