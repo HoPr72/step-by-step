@@ -56,6 +56,7 @@ PY=~/.venvs/cad/bin/python
 $PY cli.py rozmery "dil.step"                  # tabulka těles do terminálu
 $PY cli.py png     "dil.step" nahled.png       # technický render, 4 pohledy
 $PY cli.py vykres  "dil.step" list.png         # perokresba s kótami
+$PY cli.py sada    nacrtky/ "a.step" "b.step"  # perokresby v jednom měřítku
 $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
 ```
 
@@ -63,6 +64,12 @@ Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmě
 perspektivy, jen viditelné hrany, okótovaná šířka dole a výška vlevo.
 Přepínače `--pohled zepredu|zezadu|zboku|shora`, `--sirka` v pixelech
 a `--pruhledne` pro pozadí bez bílé.
+
+Příkaz `sada` zpracuje celou řadu velikostí najednou a dá jim **společné
+měřítko**: nejširší kus vyjde na `--sirka`, ostatní poměrně menší, takže se
+obrázky dají postavit vedle sebe. Názvy souborů vznikají ze jmen STEPů.
+Jednotlivou kresbu lze do takové řady doplnit přes `vykres --meritko` s
+hodnotou v px/mm, kterou `sada` vypíše.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -100,6 +107,14 @@ odpovídá skutečnému rozměru a jde rovnou okótovat — u perspektivy by to
 neplatilo. PIL čáry nevyhlazuje, proto se kreslí do čtyřnásobného plátna
 a na konci se zmenšuje.
 
+**Stejná šířka v pixelech není stejné měřítko.** Když se každá velikost
+roztáhne na 1600 px, vyjde na obrázku nejmenší skříň stejně velká jako
+největší — na srovnávací tabulce pak vypadá dvousloupcová větší než
+osmisloupcová. Proto `sada` počítá měřítko ze všech kusů najednou: průmět je
+to pomalé, kreslení skoro nic, takže se všechno promítne napřed a kreslí se
+až s měřítkem na ruce. Tloušťka čar a velikost písma se drží nominální
+šířky, ne skutečné, aby byly napříč řadou stejné.
+
 **Výběr rámečkem** je typu *crossing* přes obalové kvádry: chytí i těleso,
 jehož kvádr do rámečku zasahuje, ale geometrie ne. U šikmých a tenkých dílů
 to vybere víc, než člověk čeká.
@@ -111,7 +126,7 @@ ale do objemu a hmotnosti celé sestavy se počítají dál.
 
 ```
 stepkit.py        čtení STEP, názvy, mesh, rozměry, objemy
-cli.py            příkazová řádka (rozmery / png / json)
+cli.py            příkazová řádka (rozmery / png / vykres / sada / json)
 server.py         lokální server, procházení disku, nativní dialog
 viewer/index.html prohlížeč (three.js, bez build kroku)
 cache/            keš převodů, negitovaná

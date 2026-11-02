@@ -4,6 +4,7 @@
     python cli.py rozmery "dil.step"                 tabulka těles do terminálu
     python cli.py png     "dil.step" nahled.png      technický render, 4 pohledy
     python cli.py vykres  "dil.step" list.png        perokresba s kótami
+    python cli.py sada    vystup/ "a.step" "b.step"  perokresby v jednom měřítku
     python cli.py json    vystup/ "a.step" "b.step"  data pro webový prohlížeč
 """
 
@@ -106,15 +107,43 @@ def cmd_vykres(args: list[str]) -> int:
     ap.add_argument("out")
     ap.add_argument("--pohled", default="zepredu", choices=sorted(vykres.VIEWS))
     ap.add_argument("--sirka", type=int, default=1600, help="šířka PNG v pixelech")
+    ap.add_argument("--meritko", type=float,
+                    help="px na milimetr; bez něj se kresba roztáhne na --sirka")
     ap.add_argument("--pruhledne", action="store_true", help="průhledné pozadí")
     opts = ap.parse_args(args)
 
-    info = vykres.render(opts.src, opts.out, view=opts.pohled,
-                         width=opts.sirka, transparent=opts.pruhledne)
-    print(f"{opts.out}  {info['px'][0]}×{info['px'][1]} px")
+    info = vykres.render(opts.src, opts.out, view=opts.pohled, width=opts.sirka,
+                         transparent=opts.pruhledne, scale=opts.meritko)
+    print(f"{opts.out}  {info['px'][0]}×{info['px'][1]} px"
+          f"  (měřítko {info['meritko']:.4f} px/mm)")
     print(f"  kóty: šířka {info['sirka']:.2f} mm, výška {info['vyska']:.2f} mm"
           f"  (hloubka {info['hloubka']:.2f} mm nekótovaná)")
     print(f"  viditelných hran: {info['hran']}")
+    return 0
+
+
+def cmd_sada(args: list[str]) -> int:
+    import argparse
+
+    import vykres
+
+    ap = argparse.ArgumentParser(prog="cli.py sada",
+                                 description="perokresby celé řady v jednom měřítku")
+    ap.add_argument("outdir")
+    ap.add_argument("src", nargs="+")
+    ap.add_argument("--pohled", default="zepredu", choices=sorted(vykres.VIEWS))
+    ap.add_argument("--sirka", type=int, default=1600,
+                    help="šířka PNG nejširšího kusu v pixelech")
+    ap.add_argument("--pruhledne", action="store_true", help="průhledné pozadí")
+    opts = ap.parse_args(args)
+
+    infos = vykres.render_set(opts.src, opts.outdir, view=opts.pohled,
+                              width=opts.sirka, transparent=opts.pruhledne)
+    for info in infos:
+        print(f"  {os.path.basename(info['out'])[:40]:<42}"
+              f"{info['px'][0]:>5} ×{info['px'][1]:>5} px"
+              f"{info['sirka']:>10.2f} ×{info['vyska']:>8.2f} mm")
+    print(f"\n{len(infos)} kreseb v měřítku {infos[0]['meritko']:.4f} px/mm")
     return 0
 
 
@@ -146,7 +175,7 @@ def cmd_json(args: list[str]) -> int:
 
 
 COMMANDS = {"rozmery": cmd_rozmery, "png": cmd_png,
-            "vykres": cmd_vykres, "json": cmd_json}
+            "vykres": cmd_vykres, "sada": cmd_sada, "json": cmd_json}
 
 
 def main() -> int:
