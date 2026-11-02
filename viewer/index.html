@@ -1,0 +1,921 @@
+<title>Prohlížeč STEP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: model vlevo, vpravo nejdřív tělesa, pod nimi odměřené hodnoty. */
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --sunk: #eef0f4;
+    --fg: #15181f;
+    --muted: #5d6675;
+    --faint: #878f9d;
+    --line: #d9dde4;
+    --accent: #0f6fb8;
+    --accent-soft: #e4f0fa;
+    --pick: #1d9a52;
+    --pick-soft: #e0f3e7;
+    --dim: #b45309;
+    --dim-soft: #fdf0dd;
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1116; --surface: #161b22; --sunk: #1c222b; --fg: #e7eaf0;
+      --muted: #99a2b2; --faint: #6d7788; --line: #2a313c;
+      --accent: #58aae8; --accent-soft: #15293c;
+      --pick: #3fc97d; --pick-soft: #10301f;
+      --dim: #e0a458; --dim-soft: #2e2213;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --surface: #161b22; --sunk: #1c222b; --fg: #e7eaf0;
+    --muted: #99a2b2; --faint: #6d7788; --line: #2a313c;
+    --accent: #58aae8; --accent-soft: #15293c;
+    --pick: #3fc97d; --pick-soft: #10301f;
+    --dim: #e0a458; --dim-soft: #2e2213;
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-sans); line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 36px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  h1 { font-size: 1.3rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .meta { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
+
+  button {
+    font-family: var(--font-mono); font-size: .72rem; letter-spacing: .04em;
+    color: var(--muted); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 5px;
+    padding: 5px 9px; cursor: pointer;
+  }
+  button:hover { color: var(--fg); border-color: var(--faint); }
+  button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  #measure[aria-pressed="true"] { color: var(--dim); border-color: var(--dim); background: var(--dim-soft); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #openbtn {
+    font-family: var(--font-sans); font-size: .85rem; color: var(--fg);
+    padding: 6px 11px; display: inline-flex; align-items: center; gap: 7px;
+  }
+  #openbtn b { font-weight: 600; }
+  #openbtn i { font-style: normal; color: var(--faint); font-size: .9em; }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1.52fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 920px) { .cols { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+
+  /* ---- scéna ---- */
+  .stage { position: relative; overflow: hidden; }
+  #canvas-host { height: min(66vh, 600px); min-height: 340px; width: 100%; }
+  @media (max-width: 920px) { #canvas-host { height: 50vh; min-height: 300px; } }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .stage[data-mode="measure"] canvas { cursor: crosshair; }
+
+  .toolbar {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none;
+  }
+  .toolbar > * { pointer-events: auto; }
+  .spacer { flex: 1; min-width: 8px; }
+
+  #rubber {
+    position: absolute; border: 1px solid var(--pick);
+    background: color-mix(in srgb, var(--pick) 14%, transparent);
+    pointer-events: none;
+  }
+  .dimlabel {
+    position: absolute; transform: translate(-50%, -50%);
+    font-family: var(--font-mono); font-size: .68rem; line-height: 1.25;
+    color: var(--dim); background: var(--surface);
+    border: 1px solid var(--dim); border-radius: 4px;
+    padding: 2px 5px; cursor: grab; white-space: nowrap; text-align: center;
+    user-select: none; touch-action: none;
+  }
+  .dimlabel.dragging { cursor: grabbing; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+  .dimlabel span { display: block; color: var(--faint); font-size: .92em; }
+
+  .readout {
+    position: absolute; left: 12px; bottom: 11px; right: 12px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    font-family: var(--font-mono); font-size: .71rem; color: var(--faint);
+    pointer-events: none;
+  }
+  .scalebar { display: flex; align-items: center; gap: 7px; }
+  .scalebar i { display: block; height: 1px; width: 64px; background: var(--faint); }
+  #hint { text-align: right; color: var(--dim); }
+  .loading {
+    position: absolute; inset: 0; display: grid; place-content: center;
+    font-family: var(--font-mono); font-size: .8rem; color: var(--faint);
+    background: var(--surface); text-align: center; padding: 0 20px;
+  }
+
+  /* ---- výběr souboru ---- */
+  #browser[hidden] { display: none; }
+  #browser {
+    position: fixed; inset: 0; z-index: 40;
+    background: color-mix(in srgb, var(--fg) 34%, transparent);
+    display: grid; place-items: start center;
+    padding: 6vh 16px 16px;
+  }
+  .sheet {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    width: min(620px, 100%); max-height: 78vh; display: flex; flex-direction: column;
+    box-shadow: 0 18px 48px rgba(0,0,0,.22); overflow: hidden;
+  }
+  .sheet-top { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #filter {
+    flex: 1; min-width: 160px;
+    font-family: var(--font-sans); font-size: .85rem; color: var(--fg);
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 5px; padding: 6px 9px;
+  }
+  .sheet-list { overflow-y: auto; padding: 6px 0 10px; }
+  .grp {
+    font-family: var(--font-mono); font-size: .67rem; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--faint);
+    padding: 10px 14px 4px; position: sticky; top: 0; background: var(--surface);
+  }
+  .item {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 5px 14px; cursor: pointer; font-size: .86rem;
+  }
+  .item:hover { background: var(--sunk); }
+  .item[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .item small { font-family: var(--font-mono); font-size: .7rem; color: var(--faint); }
+  .empty { padding: 18px 14px; color: var(--faint); font-size: .85rem; }
+
+  /* ---- panely ---- */
+  .block { padding: 12px 14px; }
+  .block + .block { border-top: 1px solid var(--line); }
+  h2 {
+    font-family: var(--font-mono); font-size: .7rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+    margin: 0 0 9px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  }
+  h2 em { font-style: normal; text-transform: none; letter-spacing: 0; }
+
+  .listwrap { max-height: 300px; overflow-y: auto; margin: -2px -4px; padding: 0 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+  thead th {
+    font-family: var(--font-mono); font-weight: 500; font-size: .66rem;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--faint);
+    border-bottom: 1px solid var(--line); padding: 0 6px 4px; text-align: left;
+    position: sticky; top: 0; background: var(--surface);
+  }
+  thead th:last-child { text-align: right; }
+  tbody tr { cursor: pointer; }
+  tbody td { border-bottom: 1px solid var(--line); padding: 3px 6px; }
+  tbody td:first-child { overflow: hidden; text-overflow: ellipsis; max-width: 1px; width: 100%; white-space: nowrap; }
+  tbody td:last-child { text-align: right; width: 1%; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--sunk); }
+  tbody tr[aria-selected="true"] td { background: var(--pick-soft); color: var(--pick); font-weight: 600; }
+  tbody tr[data-hidden="true"] td:first-child { color: var(--faint); text-decoration: line-through; font-weight: 400; }
+  tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .eye {
+    display: grid; place-items: center; width: 24px; height: 20px;
+    padding: 0; border: 0; background: none; color: var(--faint); cursor: pointer;
+  }
+  .eye:hover { color: var(--fg); background: none; }
+  .eye svg { width: 15px; height: 15px; display: block; }
+  tr[data-hidden="true"] .eye { color: var(--line); }
+
+  .dimbig { font-family: var(--font-mono); font-size: 1.22rem; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .dimbig small { color: var(--faint); font-size: .66rem; margin-left: 3px; }
+  .scope { color: var(--muted); font-size: .76rem; }
+  .scope b { color: var(--pick); font-weight: 600; }
+
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: .82rem; margin: 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  .mass { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  select#density {
+    font-family: var(--font-sans); font-size: .79rem; color: var(--fg);
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 5px; padding: 4px 7px;
+  }
+  #mass { font-family: var(--font-mono); font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+
+  footer { color: var(--faint); font-size: .75rem; max-width: 74ch; }
+  footer b { color: var(--fg); font-weight: 500; }
+  kbd {
+    font-family: var(--font-mono); font-size: .9em; color: var(--muted);
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 3px; padding: 0 4px;
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Prohlížeč STEP</h1>
+    <button type="button" id="openbtn"><b>—</b><i>otevřít…</i></button>
+    <span class="meta" id="meta"></span>
+  </header>
+
+  <div class="cols">
+    <section class="panel stage" data-mode="select">
+      <div id="canvas-host"></div>
+      <div class="toolbar">
+        <button type="button" data-view="iso">ISO</button>
+        <button type="button" data-view="front">ZEPŘEDU</button>
+        <button type="button" data-view="side">ZBOKU</button>
+        <button type="button" data-view="top">SHORA</button>
+        <span class="spacer"></span>
+        <button type="button" id="edges" aria-pressed="true">HRANY</button>
+        <button type="button" id="measure" aria-pressed="false">KÓTA</button>
+        <button type="button" id="clear">VYČISTIT</button>
+      </div>
+      <div class="readout">
+        <span class="scalebar"><i></i><span id="scaleval">—</span></span>
+        <span id="hint"></span>
+      </div>
+      <div class="loading" id="loading">načítám…</div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <section class="panel">
+        <div class="block">
+          <h2>Tělesa <em id="count"></em></h2>
+          <div class="listwrap">
+            <table>
+              <thead><tr><th>Název</th><th><button type="button" class="eye" id="showall" title="Zobrazit vše"></button></th></tr></thead>
+              <tbody id="parts"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="block">
+          <h2>Obrysový rozměr <em class="scope" id="scope"></em></h2>
+          <div class="dimbig" id="overall">—</div>
+        </div>
+        <div class="block">
+          <h2>Sestava</h2>
+          <dl class="kv" id="summary"></dl>
+        </div>
+        <div class="block">
+          <h2>Odhad hmotnosti</h2>
+          <div class="mass">
+            <select id="density" aria-label="Materiál">
+              <option value="7.85" selected>Ocel — 7,85 g/cm³</option>
+              <option value="7.9">Nerez — 7,90 g/cm³</option>
+              <option value="2.7">Hliník — 2,70 g/cm³</option>
+            </select>
+            <span id="mass">—</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <b>Myš:</b> levé tlačítko vybírá (klik nebo tažení rámečkem), prostřední posouvá, pravé otáčí, kolečko zoom.
+    <kbd>Shift</kbd> přidává do výběru, <kbd>Esc</kbd> ruší. Na trackpadu: <kbd>Alt</kbd>+tažení otáčí, <kbd>Cmd</kbd>+tažení posouvá.
+    <b>Kótování:</b> <kbd>KÓTA</kbd> (nebo <kbd>M</kbd>) a dva kliky — kurzor se přichytí na rohy a hrany tělesa pod ním.
+    Popisek kóty <b>táhni myší</b> a vytáhneš ji mimo kresbu, koncové body zůstanou na místě; dvojklikem ji smažeš.
+    Skrytá tělesa zmizí ze scény, ale do objemu a hmotnosti celé sestavy se počítají dál.
+  </footer>
+</div>
+
+<div id="browser" hidden>
+  <div class="sheet">
+    <div class="sheet-top">
+      <input id="filter" type="text" placeholder="Filtrovat podle názvu nebo složky…" autocomplete="off">
+      <button type="button" id="native" hidden>SYSTÉMOVÝ DIALOG…</button>
+      <button type="button" id="closebrowser">ZAVŘÍT</button>
+    </div>
+    <div class="sheet-list" id="filelist"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const cz = (v, d = 2) => v.toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
+const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.1 10.1 0 0 1 12 20c-7 0-11-8-11-8a18.4 18.4 0 0 1 5.1-5.9m3.6-1.7A10.1 10.1 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.2 3.2m-6.7-1.1A3 3 0 1 1 9.9 9.9"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+const host = document.getElementById('canvas-host');
+const stage = host.parentElement;
+const loading = document.getElementById('loading');
+
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+host.appendChild(renderer.domElement);
+const canvas = renderer.domElement;
+
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 60000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+// LMB zůstává volné pro výběr a kótování; obsluhu má vlastní kód níž.
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a5160, 2.1));
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.0); keyLight.position.set(0.8, -1.2, 1.7); scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.8); fillLight.position.set(-1.2, 0.6, -0.8); scene.add(fillLight);
+
+const matBase = new THREE.MeshStandardMaterial({ color: 0xb9c0cb, metalness: 0.32, roughness: 0.56 });
+const matPick = new THREE.MeshStandardMaterial({ color: 0x1d9a52, metalness: 0.28, roughness: 0.45, emissive: 0x062b14 });
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x1b1f27, transparent: true, opacity: 0.55 });
+const dimMat = new THREE.LineBasicMaterial({ color: 0xb45309, depthTest: false });
+const extMat = new THREE.LineBasicMaterial({ color: 0xb45309, transparent: true, opacity: 0.45, depthTest: false });
+const snapMat = new THREE.PointsMaterial({ color: 0xb45309, size: 9, sizeAttenuation: false, depthTest: false });
+
+const isDark = () => document.documentElement.dataset.theme === 'dark' ||
+  (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+function applyTheme() {
+  const d = isDark();
+  matBase.color.setHex(d ? 0x7f8794 : 0xb9c0cb);
+  matPick.color.setHex(d ? 0x3fc97d : 0x1d9a52);
+  edgeMat.color.setHex(d ? 0x0a0c10 : 0x1b1f27);
+  edgeMat.opacity = d ? 0.72 : 0.55;
+  for (const m of [dimMat, extMat, snapMat]) m.color.setHex(d ? 0xe0a458 : 0xb45309);
+}
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+const meshGroup = new THREE.Group();
+const edgeGroup = new THREE.Group();
+const dimGroup = new THREE.Group();
+dimGroup.renderOrder = 10;
+scene.add(meshGroup, edgeGroup, dimGroup);
+
+let DATA = null, meshes = [], edgeLines = [], snapSets = [], radius = 500;
+const selected = new Set();
+const hiddenSet = new Set();
+let dims = [], pending = [], measuring = false;
+
+/* ---------- pohledy ---------- */
+// Model drží CAD konvenci se svislou osou Z, proto up = (0,0,1), ne výchozí Y three.js.
+const DIRS = { iso: [1, -1, 0.8], front: [0, -1, 0], side: [1, 0, 0], top: [0, 0, 1] };
+function setView(name) {
+  const d = new THREE.Vector3(...DIRS[name]).normalize();
+  camera.position.copy(d).multiplyScalar(radius * 3.1);
+  camera.up.set(...(name === 'top' ? [0, 1, 0] : [0, 0, 1]));
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
+/* ---------- zdroje modelů ---------- */
+// Stránka běží ve dvou režimech: proti lokálnímu serveru (procházení disku
+// a systémový dialog), nebo samostatně se zabalenými modely vedle sebe.
+const state = { server: false, native: false, entries: [], current: null };
+
+const openbtn = document.getElementById('openbtn');
+const browser = document.getElementById('browser');
+const filelist = document.getElementById('filelist');
+const filter = document.getElementById('filter');
+const nativeBtn = document.getElementById('native');
+
+fetch('api/ping', { cache: 'no-store' })
+  .then((r) => (r.ok ? r.json() : Promise.reject()))
+  .then((info) => {
+    state.server = true;
+    state.native = !!info.native;
+    nativeBtn.hidden = !info.native;
+    return fetch('api/files').then((r) => r.json());
+  })
+  .then((files) => {
+    state.entries = files.map((f) => ({
+      label: f.rel.split('/').pop(),
+      group: [f.root, f.rel.split('/').slice(0, -1).join('/')].filter(Boolean).join(' / '),
+      note: f.kb >= 1024 ? `${(f.kb / 1024).toFixed(1)} MB` : `${f.kb} kB`,
+      url: 'api/model?path=' + encodeURIComponent(f.path),
+      id: f.path,
+    }));
+    start();
+  })
+  .catch(() => {
+    // Samostatný režim: seznam zabalených modelů vedle stránky.
+    fetch('models/index.json')
+      .then((r) => r.json())
+      .then((list) => {
+        state.entries = list.map((m) => ({
+          label: m.file,
+          group: 'Zabalené modely',
+          note: `${m.n} těles`,
+          url: `models/${m.key}.json`,
+          id: m.key,
+        }));
+        start();
+      })
+      .catch(() => { loading.textContent = 'nepodařilo se načíst seznam modelů'; });
+  });
+
+function start() {
+  renderList();
+  if (state.entries.length) open(state.entries[0]);
+  else loading.textContent = 'žádný STEP soubor nenalezen';
+}
+
+function renderList() {
+  const q = filter.value.trim().toLowerCase();
+  const hits = state.entries.filter((e) =>
+    !q || e.label.toLowerCase().includes(q) || e.group.toLowerCase().includes(q));
+  if (!hits.length) {
+    filelist.innerHTML = '<div class="empty">Nic nenalezeno.</div>';
+    return;
+  }
+  const groups = new Map();
+  for (const e of hits) {
+    if (!groups.has(e.group)) groups.set(e.group, []);
+    groups.get(e.group).push(e);
+  }
+  filelist.innerHTML = [...groups].map(([name, items]) =>
+    `<div class="grp">${name || '.'}</div>` + items.map((e) =>
+      `<div class="item" data-id="${encodeURIComponent(e.id)}" role="button" tabindex="0"` +
+      ` aria-current="${state.current === e.id}">${e.label}<small>${e.note}</small></div>`).join('')
+  ).join('');
+}
+
+filter.addEventListener('input', renderList);
+openbtn.addEventListener('click', () => {
+  browser.hidden = false;
+  filter.value = '';
+  renderList();
+  filter.focus();
+});
+document.getElementById('closebrowser').addEventListener('click', () => { browser.hidden = true; });
+browser.addEventListener('click', (e) => { if (e.target === browser) browser.hidden = true; });
+
+filelist.addEventListener('click', (e) => {
+  const item = e.target.closest('.item');
+  if (!item) return;
+  const id = decodeURIComponent(item.dataset.id);
+  const entry = state.entries.find((x) => x.id === id);
+  if (entry) { browser.hidden = true; open(entry); }
+});
+
+nativeBtn.addEventListener('click', () => {
+  nativeBtn.disabled = true;
+  fetch('api/pick', { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((res) => {
+      if (res.cancelled || res.error) return;
+      const entry = {
+        label: res.name, group: 'Vybrané ručně', note: '',
+        url: 'api/model?path=' + encodeURIComponent(res.path), id: res.path,
+      };
+      if (!state.entries.some((x) => x.id === entry.id)) state.entries.unshift(entry);
+      browser.hidden = true;
+      open(entry);
+    })
+    .finally(() => { nativeBtn.disabled = false; });
+});
+
+function open(entry) {
+  state.current = entry.id;
+  openbtn.innerHTML = `<b>${entry.label}</b><i>otevřít…</i>`;
+  loading.style.display = '';
+  loading.textContent = 'načítám ' + entry.label + '…';
+  return fetch(entry.url)
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.error) throw new Error(data.error);
+      build(data);
+    })
+    .catch((err) => { loading.textContent = 'nepodařilo se načíst — ' + err.message; });
+}
+
+/* ---------- stavba scény ---------- */
+function disposeAll() {
+  for (const g of [meshGroup, edgeGroup, dimGroup]) {
+    for (const o of [...g.children]) { o.geometry?.dispose(); g.remove(o); }
+  }
+  document.querySelectorAll('.dimlabel').forEach((e) => e.remove());
+  meshes = []; edgeLines = []; snapSets = []; dims = []; pending = [];
+  selected.clear(); hiddenSet.clear();
+}
+
+function build(data) {
+  disposeAll();
+  DATA = data;
+  document.getElementById('meta').textContent =
+    `${cz(data.size[0])} × ${cz(data.size[1])} × ${cz(data.size[2])} mm`;
+  document.getElementById('count').textContent = data.solids.length + '×';
+
+  // Některé STEPy dávají všem dílům stejný název, proto duplicity rozlišíme pořadím.
+  const seen = new Map();
+  const ord = data.solids.map((s) => {
+    const n = (seen.get(s.name) || 0) + 1;
+    seen.set(s.name, n);
+    return n;
+  });
+  data.disp = data.solids.map((s, i) => seen.get(s.name) > 1 ? `${s.name} #${ord[i]}` : s.name);
+
+  document.getElementById('parts').innerHTML = data.solids.map((s, i) =>
+    `<tr data-i="${i}" tabindex="0" aria-selected="false" data-hidden="false">` +
+    `<td title="${data.disp[i]}">${data.disp[i]}</td>` +
+    `<td><button type="button" class="eye" data-eye="${i}" title="Skrýt / zobrazit">${EYE}</button></td></tr>`
+  ).join('');
+
+  for (const s of data.solids) {
+    let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(s.v, 3));
+    g.setIndex(s.f);
+    g = g.toNonIndexed();          // plochý stín po trojúhelnících, ne vyhlazené hrany
+    g.computeVertexNormals();
+    g.computeBoundingBox();
+    const m = new THREE.Mesh(g, matBase);
+    meshGroup.add(m); meshes.push(m);
+
+    const eg = new THREE.EdgesGeometry(g, 24);
+    const line = new THREE.LineSegments(eg, edgeMat);
+    edgeGroup.add(line);
+    edgeLines.push(line);
+    snapSets.push(eg.getAttribute('position').array);   // body pro přichytávání kót
+  }
+
+  const box = new THREE.Box3().setFromObject(meshGroup);
+  radius = box.getBoundingSphere(new THREE.Sphere()).radius || 100;
+  setView('iso');
+  loading.style.display = 'none';
+  refresh();
+}
+
+/* ---------- výběr, viditelnost, infobox ---------- */
+function visibleMeshes() { return meshes.filter((m, i) => !hiddenSet.has(i)); }
+
+function refresh() {
+  meshes.forEach((m, i) => {
+    const hid = hiddenSet.has(i);
+    m.visible = !hid;
+    edgeLines[i].visible = !hid && edgeGroup.visible;
+    m.material = selected.has(i) ? matPick : matBase;
+  });
+  document.querySelectorAll('#parts tr').forEach((tr) => {
+    const i = +tr.dataset.i;
+    tr.setAttribute('aria-selected', String(selected.has(i)));
+    tr.dataset.hidden = String(hiddenSet.has(i));
+    tr.querySelector('.eye').innerHTML = hiddenSet.has(i) ? EYE_OFF : EYE;
+  });
+  updateInfo();
+}
+
+function updateInfo() {
+  if (!DATA) return;
+  const scope = document.getElementById('scope');
+  const overall = document.getElementById('overall');
+
+  let size, vol;
+  if (selected.size === 0) {
+    size = DATA.size;
+    vol = DATA.total_vol;
+    scope.textContent = 'celý model';
+  } else {
+    const b = new THREE.Box3();
+    for (const i of selected) b.union(meshes[i].geometry.boundingBox);
+    const v = new THREE.Vector3(); b.getSize(v);
+    size = [v.x, v.y, v.z];
+    vol = [...selected].reduce((a, i) => a + DATA.solids[i].vol, 0);
+    scope.innerHTML = selected.size === 1
+      ? `<b>${DATA.disp[[...selected][0]]}</b>`
+      : `<b>výběr ${selected.size}×</b>`;
+  }
+  overall.innerHTML = `${cz(size[0])} × ${cz(size[1])} × ${cz(size[2])}<small>mm</small>`;
+
+  const thin = DATA.solids.filter((s) => Math.min(...s.size) <= 3).length;
+  document.getElementById('summary').innerHTML = `
+    <dt>Těles</dt><dd>${DATA.solids.length}${hiddenSet.size ? ` <span style="color:var(--faint)">(${hiddenSet.size} skrytých)</span>` : ''}</dd>
+    <dt>Z toho plechů ≤ 3 mm</dt><dd>${thin}</dd>
+    <dt>Objem ${selected.size ? 'výběru' : 'materiálu'}</dt><dd>${cz(vol, 1)} cm³</dd>
+    <dt>Formát</dt><dd>STEP</dd>`;
+
+  const d = parseFloat(document.getElementById('density').value);
+  document.getElementById('mass').textContent = cz(vol * d / 1000) + ' kg';
+}
+document.getElementById('density').addEventListener('change', updateInfo);
+
+function toggle(i, additive) {
+  if (!additive) {
+    const only = selected.size === 1 && selected.has(i);
+    selected.clear();
+    if (!only) selected.add(i);
+  } else if (selected.has(i)) selected.delete(i);
+  else selected.add(i);
+  refresh();
+}
+
+const parts = document.getElementById('parts');
+parts.addEventListener('click', (e) => {
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    e.stopPropagation();
+    const i = +eye.dataset.eye;
+    hiddenSet.has(i) ? hiddenSet.delete(i) : hiddenSet.add(i);
+    if (hiddenSet.has(i)) selected.delete(i);
+    refresh();
+    return;
+  }
+  const tr = e.target.closest('tr[data-i]');
+  if (tr) toggle(+tr.dataset.i, e.shiftKey || e.metaKey || e.ctrlKey);
+});
+parts.addEventListener('keydown', (e) => {
+  const tr = e.target.closest('tr[data-i]');
+  if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(+tr.dataset.i, e.shiftKey); }
+});
+document.getElementById('showall').addEventListener('click', () => { hiddenSet.clear(); refresh(); });
+
+/* ---------- kótování ---------- */
+const ray = new THREE.Raycaster();
+const snapDot = new THREE.Points(new THREE.BufferGeometry().setAttribute(
+  'position', new THREE.Float32BufferAttribute([0, 0, 0], 3)), snapMat);
+snapDot.visible = false; snapDot.renderOrder = 11;
+scene.add(snapDot);
+
+function ndc(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  return new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+}
+
+// Přichytává se jen k hranám tělesa pod kurzorem — levné i u sestav o stovkách dílů.
+function snapAt(cx, cy) {
+  ray.setFromCamera(ndc(cx, cy), camera);
+  const hit = ray.intersectObjects(visibleMeshes(), false)[0];
+  if (!hit) return null;
+  const arr = snapSets[meshes.indexOf(hit.object)];
+  const r = canvas.getBoundingClientRect();
+  const px = cx - r.left, py = cy - r.top;
+  const p = new THREE.Vector3();
+  let best = null, bestD = 18;
+  for (let i = 0; i < arr.length; i += 3) {
+    p.set(arr[i], arr[i + 1], arr[i + 2]).project(camera);
+    const sx = (p.x * 0.5 + 0.5) * r.width, sy = (-p.y * 0.5 + 0.5) * r.height;
+    const d = Math.hypot(sx - px, sy - py);
+    if (d < bestD) { bestD = d; best = new THREE.Vector3(arr[i], arr[i + 1], arr[i + 2]); }
+  }
+  return best || hit.point.clone();
+}
+
+// Kóta drží koncové body a posuv: čára i popisek se dají vytáhnout mimo kresbu,
+// přes pomocné čáry zpět k měřeným bodům, jak je to v CADu zvykem.
+function addDim(a, b) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+  const main = new THREE.LineSegments(geom, dimMat);
+  main.renderOrder = 10;
+  dimGroup.add(main);
+
+  const ext = new THREE.BufferGeometry();
+  ext.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+  const helper = new THREE.LineSegments(ext, extMat);
+  helper.renderOrder = 10;
+  dimGroup.add(helper);
+
+  const el = document.createElement('div');
+  el.className = 'dimlabel';
+  const dist = a.distanceTo(b);
+  const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y), dz = Math.abs(b.z - a.z);
+  el.innerHTML = `${cz(dist)} mm` +
+    ([dx, dy, dz].filter((v) => v > 0.005).length > 1
+      ? `<span>Δ ${cz(dx, 1)} / ${cz(dy, 1)} / ${cz(dz, 1)}</span>` : '');
+  el.title = 'Táhni pro odsazení, dvojklik smaže';
+  stage.appendChild(el);
+
+  const dim = { a: a.clone(), b: b.clone(), off: new THREE.Vector3(), main, helper, el };
+  dims.push(dim);
+  attachDrag(dim);
+  updateDimGeometry(dim);
+  return dim;
+}
+
+function updateDimGeometry(dim) {
+  const a2 = dim.a.clone().add(dim.off);
+  const b2 = dim.b.clone().add(dim.off);
+  const m = dim.main.geometry.attributes.position;
+  m.setXYZ(0, a2.x, a2.y, a2.z); m.setXYZ(1, b2.x, b2.y, b2.z);
+  m.needsUpdate = true;
+  dim.main.geometry.setDrawRange(0, 2);
+
+  const h = dim.helper.geometry.attributes.position;
+  h.setXYZ(0, dim.a.x, dim.a.y, dim.a.z); h.setXYZ(1, a2.x, a2.y, a2.z);
+  h.setXYZ(2, dim.b.x, dim.b.y, dim.b.z); h.setXYZ(3, b2.x, b2.y, b2.z);
+  h.needsUpdate = true;
+  dim.helper.visible = dim.off.lengthSq() > 1e-6;
+}
+
+function removeDim(dim) {
+  dimGroup.remove(dim.main); dim.main.geometry.dispose();
+  dimGroup.remove(dim.helper); dim.helper.geometry.dispose();
+  dim.el.remove();
+  dims = dims.filter((x) => x !== dim);
+}
+
+// Posun popisku v rovině kamery: rozdíl v pixelech převedeme zpět do prostoru
+// ve stejné hloubce, v jaké kóta právě leží.
+function screenDeltaToWorld(dxPx, dyPx, anchor) {
+  const r = canvas.getBoundingClientRect();
+  const p = anchor.clone().project(camera);
+  p.x += (dxPx / r.width) * 2;
+  p.y -= (dyPx / r.height) * 2;
+  return p.unproject(camera).sub(anchor);
+}
+
+function attachDrag(dim) {
+  let origin = null;
+  dim.el.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dim.el.setPointerCapture(e.pointerId);
+    dim.el.classList.add('dragging');
+    origin = {
+      x: e.clientX, y: e.clientY,
+      off: dim.off.clone(),
+      anchor: dim.a.clone().add(dim.b).multiplyScalar(0.5).add(dim.off),
+    };
+  });
+  dim.el.addEventListener('pointermove', (e) => {
+    if (!origin) return;
+    const world = screenDeltaToWorld(e.clientX - origin.x, e.clientY - origin.y, origin.anchor);
+    dim.off.copy(origin.off).add(world);
+    updateDimGeometry(dim);
+  });
+  const stop = (e) => {
+    if (!origin) return;
+    origin = null;
+    dim.el.classList.remove('dragging');
+    try { dim.el.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  dim.el.addEventListener('pointerup', stop);
+  dim.el.addEventListener('pointercancel', stop);
+  dim.el.addEventListener('dblclick', (e) => { e.stopPropagation(); removeDim(dim); });
+}
+
+const measureBtn = document.getElementById('measure');
+const hint = document.getElementById('hint');
+function setMeasure(on) {
+  measuring = on;
+  measureBtn.setAttribute('aria-pressed', String(on));
+  stage.dataset.mode = on ? 'measure' : 'select';
+  pending = [];
+  snapDot.visible = false;
+  hint.textContent = on ? 'klikni první bod' : '';
+}
+measureBtn.addEventListener('click', () => setMeasure(!measuring));
+
+/* ---------- LMB: výběr, rámeček, kótování ---------- */
+const rubber = document.createElement('div');
+rubber.id = 'rubber'; rubber.hidden = true;
+stage.appendChild(rubber);
+let drag = null;
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || e.altKey || e.metaKey || e.ctrlKey) return;   // necháme OrbitControls
+  e.stopPropagation(); e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  drag = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, add: e.shiftKey, moved: false };
+}, true);
+
+canvas.addEventListener('pointermove', (e) => {
+  if (measuring && !drag) {
+    const p = snapAt(e.clientX, e.clientY);
+    snapDot.visible = !!p;
+    if (p) {
+      const attr = snapDot.geometry.attributes.position;
+      attr.setXYZ(0, p.x, p.y, p.z);
+      attr.needsUpdate = true;
+    }
+    return;
+  }
+  if (!drag) return;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (Math.abs(drag.x - drag.x0) > 4 || Math.abs(drag.y - drag.y0) > 4) drag.moved = true;
+  if (!drag.moved || measuring) return;
+  const r = stage.getBoundingClientRect();
+  rubber.hidden = false;
+  rubber.style.left = Math.min(drag.x0, drag.x) - r.left + 'px';
+  rubber.style.top = Math.min(drag.y0, drag.y) - r.top + 'px';
+  rubber.style.width = Math.abs(drag.x - drag.x0) + 'px';
+  rubber.style.height = Math.abs(drag.y - drag.y0) + 'px';
+}, true);
+
+canvas.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  rubber.hidden = true;
+  try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+
+  if (measuring) {
+    if (d.moved) return;
+    const p = snapAt(e.clientX, e.clientY);
+    if (!p) return;
+    pending.push(p);
+    if (pending.length === 2) {
+      addDim(pending[0], pending[1]);
+      pending = [];
+      hint.textContent = 'klikni první bod';
+    } else {
+      hint.textContent = 'klikni druhý bod';
+    }
+    return;
+  }
+  d.moved ? boxSelect(d) : clickSelect(e, d.add);
+}, true);
+
+function clickSelect(e, additive) {
+  ray.setFromCamera(ndc(e.clientX, e.clientY), camera);
+  const hit = ray.intersectObjects(visibleMeshes(), false)[0];
+  if (!hit) { if (!additive) { selected.clear(); refresh(); } return; }
+  toggle(meshes.indexOf(hit.object), additive);
+}
+
+// Rámeček bere každé těleso, jehož obalový kvádr zasahuje do výběru (crossing, jako v CADu).
+function boxSelect(d) {
+  const a = ndc(d.x0, d.y0), b = ndc(d.x, d.y);
+  const lo = new THREE.Vector2(Math.min(a.x, b.x), Math.min(a.y, b.y));
+  const hi = new THREE.Vector2(Math.max(a.x, b.x), Math.max(a.y, b.y));
+  if (!d.add) selected.clear();
+  const c = new THREE.Vector3();
+  meshes.forEach((m, i) => {
+    if (hiddenSet.has(i)) return;
+    const bb = m.geometry.boundingBox;
+    let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity;
+    for (let k = 0; k < 8; k++) {
+      c.set(k & 1 ? bb.max.x : bb.min.x, k & 2 ? bb.max.y : bb.min.y, k & 4 ? bb.max.z : bb.min.z);
+      c.project(camera);
+      sx0 = Math.min(sx0, c.x); sx1 = Math.max(sx1, c.x);
+      sy0 = Math.min(sy0, c.y); sy1 = Math.max(sy1, c.y);
+    }
+    if (sx1 >= lo.x && sx0 <= hi.x && sy1 >= lo.y && sy0 <= hi.y) selected.add(i);
+  });
+  refresh();
+}
+
+/* ---------- ostatní ovládání ---------- */
+document.querySelectorAll('[data-view]').forEach((b) =>
+  b.addEventListener('click', () => setView(b.dataset.view)));
+
+const edgeBtn = document.getElementById('edges');
+edgeBtn.addEventListener('click', () => {
+  edgeGroup.visible = !edgeGroup.visible;
+  edgeBtn.setAttribute('aria-pressed', String(edgeGroup.visible));
+  refresh();
+});
+
+function clearAll() {
+  selected.clear();
+  pending = [];
+  for (const d of [...dims]) removeDim(d);
+  if (measuring) hint.textContent = 'klikni první bod';
+  refresh();
+}
+document.getElementById('clear').addEventListener('click', clearAll);
+addEventListener('keydown', (e) => {
+  if (/input|select|textarea/i.test(e.target.tagName)) {
+    if (e.key === 'Escape') browser.hidden = true;
+    return;
+  }
+  if (e.key === 'Escape') { browser.hidden = true; clearAll(); }
+  if (e.key === 'm' || e.key === 'M') setMeasure(!measuring);
+});
+
+document.getElementById('showall').innerHTML = EYE;
+
+const scaleval = document.getElementById('scaleval');
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h || 1;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host);
+resize();
+
+const tmp = new THREE.Vector3();
+(function tick() {
+  controls.update();
+  const dist = camera.position.distanceTo(controls.target);
+  const mmPerPx = 2 * dist * Math.tan((camera.fov * Math.PI / 180) / 2) / (host.clientHeight || 1);
+  scaleval.textContent = Math.round(64 * mmPerPx) + ' mm';
+
+  const r = canvas.getBoundingClientRect();
+  for (const d of dims) {
+    tmp.addVectors(d.a, d.b).multiplyScalar(0.5).add(d.off).project(camera);
+    d.el.style.left = (tmp.x * 0.5 + 0.5) * r.width + 'px';
+    d.el.style.top = (-tmp.y * 0.5 + 0.5) * r.height + 'px';
+    d.el.hidden = tmp.z > 1;
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+})();
+</script>
