@@ -123,8 +123,11 @@ def _volume_mm3(shape) -> float:
     return props.Mass()
 
 
-def _triangulate(shape) -> tuple[list[float], list[int]]:
-    BRepMesh_IncrementalMesh(shape, LINEAR_DEFLECTION, False, ANGULAR_DEFLECTION, True)
+def _triangulate(shape, linear: float | None = None,
+                 angular: float | None = None) -> tuple[list[float], list[int]]:
+    linear = LINEAR_DEFLECTION if linear is None else linear
+    angular = ANGULAR_DEFLECTION if angular is None else angular
+    BRepMesh_IncrementalMesh(shape, linear, False, angular, True)
     verts: list[float] = []
     tris: list[int] = []
     explorer = TopExp_Explorer(shape, TopAbs_FACE)

@@ -16,6 +16,10 @@ python3 -m venv ~/.venvs/cad
 Tím přijde i `cadquery-ocp` s celým OCCT (~730 MB). Nic se neinstaluje
 systémově a `conda base` zůstane nedotčená.
 
+Na render je navíc potřeba **Blender** v `/Applications`. `render.py` si ho
+volá sám na pozadí; do venv se nic nepřidává, protože Blender si nese
+vlastní Python.
+
 ## Prohlížeč
 
 ```bash
@@ -58,6 +62,8 @@ $PY cli.py png     "dil.step" nahled.png       # technický render, 4 pohledy
 $PY cli.py vykres  "dil.step" list.png         # perokresba s kótami
 $PY cli.py sada    nacrtky/ "a.step" "b.step"  # perokresby v jednom měřítku
 $PY cli.py json    vystup/ "a.step" "b.step"   # data pro statický prohlížeč
+
+$PY render.py      "dil.step" render.png       # render přes Blender
 ```
 
 Příkaz `vykres` dělá obrázky do produktových listů: rovnoběžný průmět bez
@@ -118,6 +124,34 @@ skříně nemá co dělat; mez nastavuje `--drobne`, nula nechá brain celý.
 Výstupem je STEP se zachovanou strukturou i názvy — kreslí se až potom,
 `nacrtky.py` nad výstupním adresářem. Místo souboru snese i adresář
 a projede celou řadu velikostí.
+
+### Render
+
+```bash
+$PY render.py "GK3_v5.step" render.png --celo=-Z --nahoru=+X \
+    --obrazek idle-screen.png --azimut 30 --elevace 23.5
+```
+
+`render.py` pošle model do **Blenderu** a vrátí obrázek s materiály, měkkým
+světlem a stínem na zeď. Blender běží na pozadí, nic se neotevírá na
+obrazovce. Model se otočí podle stejné dvojice `--celo` a `--nahoru` jako
+perokresby, postaví se zády ke zdi a dostane materiály podle názvů těles:
+`body` černý matný lak, `display` černé sklo, co zbyde je nerez. Obrazovka
+se hledá geometricky — je to největší rovná plocha koukající dopředu — a
+lepí se na ni `--obrazek`.
+
+Kamera se zadává úhly, ne souřadnicemi: `--azimut` je odklon od čelního
+pohledu doprava, `--elevace` výška nad vodorovnou, `--objektiv` ohnisko
+v milimetrech na kinofilm. Odstup si dopočítá sama tak, aby model padl do
+záběru, `--zaber` k tomu přidá rezervu. Kosoúhlý pohled jako v perokresbách
+je 45° a 35°.
+
+Vzhled ladí `--cerna` (odrazivost laku), `--drsnost`, `--expozice`, `--svit`
+displeje a výkony tří světel `--klic`, `--vypln`, `--strop`.
+
+Práce je rozdělená na dva kusy, protože Blender nemá OCCT a venv nemá bpy:
+`render.py` připraví sítě a popis scény, `blender_scena.py` z toho uvnitř
+Blenderu postaví scénu a vyrenderuje ji.
 
 Příkaz `json` vyrobí složku, kterou prohlížeč umí servírovat i bez serveru —
 stačí ji dát vedle `viewer/index.html` jako `viewer/models/`. V tom režimu
@@ -203,6 +237,24 @@ Vyšlo při tom najevo, že brain je namodelovaný přesně v soustavě tříslo
 skříně: tam zbývá posun 0,4 mm ve svislici, a to jen proto, že brain veze
 o 0,4 mm kratší revizi plechu sloupce.
 
+**Černá není nula.** Černý matný lak zadaný jako čistá čerň se na obrázku
+chová jako díra: nemá co odrážet, takže z něj nezbude tvar, jen silueta.
+Skutečný lak odráží kolem procenta až pěti procent světla a právě ta troška
+dělá přechody po hranách. Výchozí `--cerna 0.007` vyjde na obrázku kolem
+`#393a3b` — v okolí světlé zdi to čte jako černá, a přitom je vidět zkosení
+i zaoblené rohy.
+
+**Světla na malý předmět jsou slabá.** Blender počítá ve wattech a vzdálenost
+se podepíše na druhou. Napoprvé jsem dal klíčové světlo 260 W jako do pokoje,
+jenže to svítí na předmět velký 22 cm ze vzdálenosti půl metru — všechno
+vyšlo bílé. Správně je to kolem 14 W. A černou nespraví silnější světlo,
+jen posune celý obrázek nahoru; na to je expozice.
+
+**Zobrazovací křivka není kosmetika.** `Standard` ustřelí zeď do bílé a
+z displeje udělá placku. `AgX` stejnou scénu srovná: zeď drží střední šedou
+jako v referenci a na displeji zůstane text čitelný. Renderuje se v obojím
+stejně dlouho, rozdíl je jen v tom, jak se čísla převedou na pixely.
+
 **Jak model leží, z modelu nevyčteš.** Soustava souřadnic nese jen to, co do
 ní kdo dal; že je GK3 na výšku, že členitá hrana je dole a konektory míří
 k zemi, v souboru nikde nestojí. Geometrie svádí ke špatnému odhadu: displej
@@ -235,6 +287,8 @@ cli.py            příkazová řádka (rozmery / png / vykres / sada / json)
 nacrtky.py        celá složka náčrtků pro produktové listy B3
 montaz.py         záda s roztečemi na zeď
 brain.py          výměna krajního modulu za brain
+render.py         render přes Blender — materiály, světlo, stín
+blender_scena.py  druhá půlka renderu, běží uvnitř Blenderu
 server.py         lokální server, procházení disku, nativní dialog
 viewer/index.html prohlížeč (three.js, bez build kroku)
 cache/            keš převodů, negitovaná
